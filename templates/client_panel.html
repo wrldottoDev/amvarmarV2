@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<h1>Este es el panel cliente</h1>
+<p>
+    hola {{ username }}
+</p>
+<form method="POST" action="{% url 'logout' %}">
+    {% csrf_token %}
+    <div>
+        <button type="submit">Cerrar sesión</button>
+    </div>
+</form>
+
+{% endblock %}

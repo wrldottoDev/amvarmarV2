@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+
+<style>
+  body {
+    min-height: 100vh;
+  }
+
+
+  .login-card {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    border-radius: 20px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+  }
+
+  .login-btn {
+    background-color: #136B9A;
+    border: none;
+    transition: all 0.3s ease;
+  }
+
+  .login-btn:hover {
+    background-color: #DF5A26;
+    transform: scale(1.03);
+  }
+</style>
+
+<div class="container d-flex align-items-center justify-content-center min-vh-100">
+  <div class="login-card col-11 col-sm-8 col-md-5 p-5">
+
+    <!-- Logo o Imagen -->
+    <div class="text-center mb-4">
+      <img src="{% static 'src/logo_no_bg.png' %}" alt="Logo Amvarmar" class="img-fluid" style="max-width: 240px;">
+    </div>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} text-center" role="alert">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="POST" novalidate>
+      {% csrf_token %}
+
+      <div class="mb-3">
+        <label for="username" class="form-label fw-semibold">Usuario</label>
+        <input
+          type="text"
+          name="username"
+          id="username"
+          class="form-control form-control-lg"
+          placeholder="Ingresa tu usuario"
+          required
+        >
+      </div>
+
+      <div class="mb-3 position-relative">
+        <label for="password" class="form-label fw-semibold">Contraseña</label>
+        <input
+          type="password"
+          name="password"
+          id="password"
+          class="form-control form-control-lg"
+          placeholder="Ingresa tu contraseña"
+          required
+        >
+        <!-- Botón mostrar/ocultar -->
+        <button type="button" id="togglePassword" class="btn position-absolute top-50 end-0 translate-middle-y me-3 border-0 bg-transparent">
+          <i class="bi bi-eye-slash fs-4 text-secondary"></i>
+        </button>
+      </div>
+
+      <div class="d-grid mt-4">
+        <button type="submit" class="btn btn-lg text-white fw-bold login-btn">
+          Ingresar
+        </button>
+      </div>
+    </form>
+
+    <p class="text-center mt-4 text-muted small">
+      © {{ year|default:2025 }} Amvarmar
+    </p>
+  </div>
+</div>
+
+<script>
+  const togglePassword = document.getElementById('togglePassword');
+  const passwordInput = document.getElementById('password');
+
+  togglePassword.addEventListener('click', function () {
+    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+    passwordInput.setAttribute('type', type);
+
+    this.innerHTML = type === 'password'
+      ? '<i class="bi bi-eye-slash fs-4 text-secondary"></i>'
+      : '<i class="bi bi-eye fs-4 text-secondary"></i>';
+  });
+</script>
+
+{% endblock %}

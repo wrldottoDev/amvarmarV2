@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>WR{{ warehouse.wr_number }}</h2>
+  <p><strong>Cliente:</strong> {{ warehouse.cliente.username }}</p>
+  <p><strong>Shipper:</strong> {{ warehouse.shipper }}</p>
+  <p><strong>Carrier:</strong> {{ warehouse.carrier }}</p>
+  <p><strong>Container:</strong> {{ warehouse.container_number }}</p>
+  <p><strong>Peso:</strong> {{ warehouse.weight_lbs }} lbs / {{ warehouse.weight_kgs }} kg</p>
+
+  {% if warehouse.uploaded_file %}
+    <p><strong>Archivo:</strong> <a href="{{ warehouse.uploaded_file.url }}" target="_blank">Ver archivo</a></p>
+  {% endif %}
+
+  <hr>
+  <h4 class="mb-3">Piezas</h4>
+
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Tipo</th>
+        <th>Cantidad</th>
+        <th>Descripción</th>
+        <th style="width:150px;">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in pieces %}
+      <tr>
+        <td>{{ p.get_type_of_display }}</td>
+        <td>{{ p.quantity }}</td>
+        <td>{{ p.description|default:"—" }}</td>
+        <td>
+          <a class="btn btn-outline-secondary btn-sm" href="{% url 'edit_piece' p.pk %}">Editar</a>
+          <form method="post" action="{% url 'delete_piece' p.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger btn-sm" type="submit">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-muted text-center">Sin piezas registradas</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <hr class="my-4">
+
+  <h5>Agregar pieza</h5>
+  <form method="post" action="{% url 'add_piece' warehouse.wr_number %}" class="row g-2">
+    {% csrf_token %}
+    <div class="col-md-3">
+      {{ form.type_of.label_tag }} {{ form.type_of }}
+    </div>
+    <div class="col-md-3">
+      {{ form.quantity.label_tag }} {{ form.quantity }}
+    </div>
+    <div class="col-md-4">
+      {{ form.description.label_tag }} {{ form.description }}
+    </div>
+    <div class="col-md-2 d-grid">
+      <button class="btn btn-primary mt-4" type="submit">Agregar</button>
+    </div>
+  </form>
+  <a href="{% url 'edit_warehouse' warehouse.wr_number %}" class="btn btn-outline-secondary mt-3">Editar</a>
+  <a href="{% url 'admin_panel' %}" class="btn btn-secondary mt-4">Volver</a>
+</div>
+{% endblock %}

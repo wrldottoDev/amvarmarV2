@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3>Editar pieza — Warehouse {{ warehouse.wr_number }}</h3>
+  <form method="post" class="card card-body mt-3">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-success">Guardar</button>
+      <a href="{% url 'warehouse_detail' warehouse.wr_number %}" class="btn btn-secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
