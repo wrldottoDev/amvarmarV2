@@ -31,3 +31,8 @@ class PieceForm(forms.ModelForm):
     class Meta:
         model = PieceWarehouse
         fields = ["type_of", "quantity", "description"]
+
+class QuickClientForm(forms.Form):
+    first_name = forms.CharField(label="Nombre", max_length=30)
+    last_name = forms.CharField(label="Apellido", max_length=30)
+    email = forms.EmailField(label="Email", required=False)

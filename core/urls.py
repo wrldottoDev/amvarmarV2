@@ -18,4 +18,8 @@ urlpatterns = [
     path('admin-panel/<str:wr_number>/pieces/add/', views.add_piece, name='add_piece'),
     path('admin-panel/pieces/<int:pk>/edit/', views.edit_piece, name='edit_piece'),
     path('admin-panel/pieces/<int:pk>/delete/', views.delete_piece, name='delete_piece'),
+
+    # Clientes (usuarios no staff)
+    path("panel/clients/", views.clients_list, name="clients_list"),
+    path("panel/clients/quick-create/", views.quick_create_client, name="quick_create_client"),
 ]

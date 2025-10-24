@@ -1,18 +1,15 @@
-# core/views.py
+from django.db import transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.http import Http404, HttpResponse
 from django.contrib.auth.models import User
 from django.contrib import messages
-
+from core.utils import generate_user, generate_password
 from core.models import Warehouse, PieceWarehouse
-from core.forms import WarehouseForm, PieceForm
+from core.forms import WarehouseForm, PieceForm, QuickClientForm
 
-
-# --------------------------
-# AUTH VIEWS (tus originales)
-# --------------------------
+# AUTH VIEWS
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -44,9 +41,7 @@ def index(request):
     return render(request, "client_panel.html", {"username": username})
 
 
-# --------------------------------
-# PANEL ADMIN (manteniendo lo tuyo)
-# --------------------------------
+# PANEL ADMIN
 
 @login_required(login_url='login')
 def admin_panel(request):
@@ -61,15 +56,11 @@ def admin_panel(request):
     })
 
 
-# ----------------------------
-# CRUD de Warehouses (básico)
-# ----------------------------
+# CRUD de Warehouses
 
 @login_required(login_url='login')
 def warehouse_detail(request, wr_number):
-    """
-    Ver detalles de un Warehouse (y sus piezas) + formulario para agregar pieza.
-    """
+
     if not request.user.is_staff:
         return redirect("index")
 
@@ -88,9 +79,6 @@ def warehouse_detail(request, wr_number):
 
 @login_required(login_url='login')
 def delete_warehouse(request, wr_number):
-    """
-    Eliminar un warehouse con confirmación.
-    """
     if not request.user.is_staff:
         return redirect("index")
 
@@ -152,9 +140,8 @@ def edit_warehouse(request, wr_number):
         'warehouse': warehouse,
     })
 
-# ----------------------------
+
 # CRUD de PieceWarehouse
-# ----------------------------
 
 @login_required(login_url='login')
 def add_piece(request, wr_number):
@@ -167,7 +154,7 @@ def add_piece(request, wr_number):
         form = PieceForm(request.POST)
         if form.is_valid():
             piece = form.save(commit=False)
-            piece.warehouse = warehouse  # ← lo fijamos aquí
+            piece.warehouse = warehouse   
             piece.save()
             messages.success(request, "Pieza agregada correctamente.")
             return redirect('warehouse_detail', wr_number=wr_number)
@@ -226,3 +213,79 @@ def delete_piece(request, pk):
         return redirect('warehouse_detail', wr_number=wr_number)
 
     return render(request, 'confirm_delete.html', {'warehouse': piece.warehouse, 'piece': piece})
+
+
+@login_required(login_url='login')
+def clients_list(request):
+    """
+    Base de datos de clientes (usuarios que NO son staff).
+    """
+    if not request.user.is_staff:
+        return redirect("index")
+
+    q = request.GET.get("q", "").strip()
+    clients = User.objects.filter(is_staff=False).order_by("id")
+    if q:
+        clients = clients.filter(username__icontains=q) | clients.filter(first_name__icontains=q) | clients.filter(last_name__icontains=q)
+
+    return render(request, "panel/clients_list.html", {
+        "clients": clients,
+        "q": q,
+    })
+
+
+@login_required(login_url='login')
+@transaction.atomic
+def quick_create_client(request):
+    """
+    Crear cliente rápido: solo nombre y apellido.
+    Genera username y password automáticamente.
+    """
+    if not request.user.is_staff:
+        return redirect("index")
+
+    if request.method == "POST":
+        form = QuickClientForm(request.POST)
+        if form.is_valid():
+            first = form.cleaned_data["first_name"].strip()
+            last = form.cleaned_data["last_name"].strip()
+
+            # Generar username base con tu helper
+            base_username = generate_user(first, last)  # p. ej. "ogonzalez7"
+            username = base_username
+
+            # Asegurar unicidad
+            attempt = 0
+            while User.objects.filter(username=username).exists():
+                attempt += 1
+                # añade un dígito o sufijo incremental
+                username = f"{base_username}{attempt}"
+
+            # Generar password
+            password = generate_password()
+
+            # Crear usuario cliente
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=first,
+                last_name=last,
+                is_active=True,
+                is_staff=False,   # Cliente, no staff
+            )
+            # Si incluyes email en el form:
+            # user.email = form.cleaned_data.get("email", "")
+            # user.save(update_fields=["email"])
+
+            messages.success(
+                request,
+                f"Cliente creado: usuario '{username}'. Guarda esta contraseña (solo se muestra una vez): {password}"
+            )
+            # Redirige al listado (o a un detalle si luego lo agregas)
+            return redirect("clients_list")
+    else:
+        form = QuickClientForm()
+
+    return render(request, "panel/quick_client_form.html", {
+        "form": form
+    })
