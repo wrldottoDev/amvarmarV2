@@ -2,6 +2,12 @@ from django.db import models
 from django.contrib.auth.models import User
 
 class Warehouse(models.Model):
+
+    STATUS = [
+        ('PENDIENTE', 'Pendiente'),
+        ('LISTO', 'Listo')
+    ]
+
     cliente = models.ForeignKey(User, on_delete=models.CASCADE)
     wr_number = models.CharField(max_length=30, unique=True, primary_key=True)
     shipper = models.CharField(max_length=100)
@@ -10,6 +16,7 @@ class Warehouse(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     weight_lbs = models.FloatField(null=True)
     weight_kgs = models.FloatField()
+    status = models.CharField(max_length=20, choices=STATUS, null=True)
 
     uploaded_file = models.FileField(upload_to='warehouse_files/', blank=True, null=True)
 
