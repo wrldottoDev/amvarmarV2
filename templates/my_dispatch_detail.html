@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4" style="max-width:720px">
+  <h2>Solicitud #{{ disp.id }}</h2>
+
+  <div class="card mt-3">
+    <div class="card-body">
+      <p><b>Método:</b> {{ disp.get_method_display }}</p>
+      <p><b>Estado:</b> {{ disp.get_status_display }}</p>
+      <p><b>Creada:</b> {{ disp.created_at|date:"d/m/Y H:i" }}</p>
+
+      <p><b>Warehouses:</b></p>
+      <ul class="mb-3">
+        {% for it in disp.items.all %}
+          <li>{{ it.warehouse.wr_number }}</li>
+        {% endfor %}
+      </ul>
+
+      <p><b>Bill of Lading:</b>
+        {% if disp.bill_of_lading %}
+          <a href="{{ disp.bill_of_lading.url }}" target="_blank" rel="noopener">Ver / Descargar</a>
+          {% if disp.bol_uploaded_at %}
+            <br><small class="text-muted">Subido: {{ disp.bol_uploaded_at|date:"d/m/Y H:i" }}</small>
+          {% endif %}
+        {% else %}
+          <span class="text-muted">Aún no disponible.</span>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <a href="{% url 'my_dispatches' %}" class="btn btn-secondary mt-3">Volver</a>
+</div>
+{% endblock %}

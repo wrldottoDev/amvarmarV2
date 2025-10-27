@@ -16,7 +16,7 @@ class Warehouse(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     weight_lbs = models.FloatField(null=True)
     weight_kgs = models.FloatField()
-    status = models.CharField(max_length=20, choices=STATUS, null=True)
+    status = models.CharField(max_length=20, choices=STATUS, default='PENDIENTE')
 
     uploaded_file = models.FileField(upload_to='warehouse_files/', blank=True, null=True)
 
@@ -45,3 +45,51 @@ class PieceWarehouse(models.Model):
 
     def __str__(self):
         return f"{self.quantity} {self.get_type_of_display()} en {self.warehouse.wr_number}"
+
+
+# core/models.py
+from django.core.exceptions import ValidationError
+
+class DispatchRequest(models.Model):
+    METHOD_CHOICES = [
+        ("MARITIMO", "Marítimo"),
+        ("AEREO", "Aéreo"),
+        ("TERRESTRE", "Terrestre"),
+    ]
+    STATUS_CHOICES = [
+        ("PENDIENTE", "Pendiente de revisión"),
+        ("APROBADO", "Aprobado / En proceso"),
+        ("RECHAZADO", "Rechazado"),
+        ("COMPLETADO", "Completado"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="dispatch_requests")
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES)
+    invoice = models.FileField(upload_to="invoices/")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDIENTE")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # B/L subido por admin (obligatorio al aprobar)
+    bill_of_lading = models.FileField(upload_to="bol/", blank=True, null=True)
+    bol_uploaded_at = models.DateTimeField(blank=True, null=True)
+
+    def clean(self):
+        # Si intenta marcar como APROBADO o COMPLETADO, debe existir B/L
+        if self.status in ("APROBADO", "COMPLETADO") and not self.bill_of_lading:
+            raise ValidationError("Debes subir el Bill of Lading para aprobar o completar la solicitud.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()  # asegura validación
+        return super().save(*args, **kwargs)
+
+
+class DispatchRequestItem(models.Model):
+    dispatch = models.ForeignKey(DispatchRequest, on_delete=models.CASCADE, related_name="items")
+    warehouse = models.ForeignKey('Warehouse', on_delete=models.PROTECT, related_name="dispatch_items")
+
+    class Meta:
+        unique_together = ("dispatch", "warehouse")
+
+    def __str__(self):
+        return f"REQ {self.dispatch_id} → WR {self.warehouse_id}"
+    

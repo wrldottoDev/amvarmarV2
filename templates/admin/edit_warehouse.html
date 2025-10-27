@@ -1,0 +1,175 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+  <h2>Editar Warehouse {{ wh.wr_number }}</h2>
+  <form method="post" enctype="multipart/form-data" id="wh-form">
+    {% csrf_token %}
+
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Datos del Warehouse</div>
+      <div class="card-body">
+        {{ form.non_field_errors }}
+        <div class="row g-3">
+          {% for field in form %}
+            <div class="col-md-6">
+              <label class="form-label">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for e in field.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+        <span>Piezas (Tipos de carga)</span>
+        <button class="btn btn-sm btn-outline-primary" type="button" id="add-piece">+ Agregar pieza</button>
+      </div>
+      <div class="card-body">
+        {{ formset.non_field_errors }}
+        {{ formset.management_form }}
+
+        <div id="pieces-container" class="vstack gap-3">
+          {% for f in formset %}
+            <div class="border rounded p-3 piece-item">
+              {# MUY IMPORTANTE: incluir los hidden fields (ej. f.id) #}
+              {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+
+              <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label">Tipo</label>
+                  {{ f.type_of }}
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Cantidad</label>
+                  {{ f.quantity }}
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Descripción</label>
+                  {{ f.description }}
+                </div>
+                <div class="col-md-1 text-center">
+                  {% if formset.can_delete %}
+                    <label class="form-label d-block">Eliminar</label>
+                    {{ f.DELETE }}
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if f.errors %}
+                <div class="text-danger small mt-2">
+                  {% for field, errs in f.errors.items %}
+                    {% for e in errs %}• {{ e }}<br>{% endfor %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <!-- empty form (oculto) para clonar -->
+        <template id="empty-form-template">
+          <div class="border rounded p-3 piece-item">
+            {# aquí inyectaremos los hidden fields generados del empty_form #}
+            __HIDDEN_FIELDS__
+            <div class="row g-3 align-items-end">
+              <div class="col-md-4">
+                <label class="form-label">Tipo</label>
+                __TYPE_OF__
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Cantidad</label>
+                __QUANTITY__
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Descripción</label>
+                __DESCRIPTION__
+              </div>
+              <div class="col-md-1 text-center">
+                <label class="form-label d-block">Eliminar</label>
+                __DELETE__
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div id="empty-form-html" class="d-none">
+          {{ formset.empty_form.as_p }}
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <div>
+        <button class="btn btn-primary">Guardar cambios</button>
+        <a href="{% url 'admin_warehouse_detail' wh.wr_number %}" class="btn btn-outline-secondary ms-2">Cancelar</a>
+      </div>
+      <a href="{% url 'delete_warehouse' wh.wr_number %}" class="btn btn-outline-danger">Eliminar warehouse</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function() {
+  const addBtn = document.getElementById('add-piece');
+  const container = document.getElementById('pieces-container');
+  const totalForms = document.getElementById('id_pieces-TOTAL_FORMS');
+  const tmpl = document.getElementById('empty-form-template').innerHTML.trim();
+  const emptyHtml = document.getElementById('empty-form-html').innerHTML;
+
+  function extractField(html, id) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    const el = div.querySelector('#id_' + id);
+    return el ? el.outerHTML : '';
+  }
+
+  function extractHidden(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    // toma TODOS los inputs hidden del empty_form (ej. id, warehouse, etc.)
+    return Array.from(div.querySelectorAll('input[type="hidden"]'))
+                .map(h => h.outerHTML).join('');
+  }
+
+  function makeNewForm(index) {
+    // construir el HTML del empty_form con el índice real
+    let html = emptyHtml
+      .replaceAll('__prefix__', index.toString())
+      .replaceAll('name="pieces-__prefix__-type_of"', `name="pieces-${index}-type_of"`)
+      .replaceAll('id="id_pieces-__prefix__-type_of"', `id="id_pieces-${index}-type_of"`)
+      .replaceAll('name="pieces-__prefix__-quantity"', `name="pieces-${index}-quantity"`)
+      .replaceAll('id="id_pieces-__prefix__-quantity"', `id="id_pieces-${index}-quantity"`)
+      .replaceAll('name="pieces-__prefix__-description"', `name="pieces-${index}-description"`)
+      .replaceAll('id="id_pieces-__prefix__-description"', `id="id_pieces-${index}-description"`)
+      .replaceAll('name="pieces-__prefix__-DELETE"', `name="pieces-${index}-DELETE"`)
+      .replaceAll('id="id_pieces-__prefix__-DELETE"', `id="id_pieces-${index}-DELETE"`);
+
+    const hidden = extractHidden(html);
+    const typeField = extractField(html, 'pieces-' + index + '-type_of');
+    const qtyField  = extractField(html, 'pieces-' + index + '-quantity');
+    const descField = extractField(html, 'pieces-' + index + '-description');
+    const delField  = extractField(html, 'pieces-' + index + '-DELETE');
+
+    // armar la tarjeta visible reemplazando placeholders
+    let wrapper = document.createElement('div');
+    wrapper.innerHTML = tmpl
+      .replace('__HIDDEN_FIELDS__', hidden)
+      .replace('__TYPE_OF__', typeField)
+      .replace('__QUANTITY__', qtyField)
+      .replace('__DESCRIPTION__', descField)
+      .replace('__DELETE__', delField);
+
+    container.appendChild(wrapper.firstElementChild);
+  }
+
+  addBtn?.addEventListener('click', function() {
+    const idx = parseInt(totalForms.value, 10);
+    makeNewForm(idx);
+    totalForms.value = idx + 1;
+  });
+})();
+</script>
+{% endblock %}

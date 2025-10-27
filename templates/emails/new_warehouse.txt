@@ -1,0 +1,12 @@
+Hola {{ username }},
+
+Se ha creado un nuevo warehouse asignado a tu cuenta:
+
+📦 Warehouse #: WR-{{ wr_number }}
+🚚 Shipper: {{ shipper }}
+🏢 Carrier: {{ carrier }}
+
+Podrás verlo en tu panel de usuario dentro de la sección “Mis Warehouses”.
+
+Gracias,
+Equipo Amvarmar

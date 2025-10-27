@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.auth.models import User
-from .models import Warehouse, PieceWarehouse
+from .models import DispatchRequest, Warehouse, PieceWarehouse
 
 class UserCreateForm(UserCreationForm):
     email = forms.EmailField(required=False)
@@ -32,7 +32,118 @@ class PieceForm(forms.ModelForm):
         model = PieceWarehouse
         fields = ["type_of", "quantity", "description"]
 
+class WarehouseForm(forms.ModelForm):
+    class Meta:
+        model = Warehouse
+        fields = [
+            "wr_number", "cliente", "shipper", "carrier", "container_number",
+            "uploaded_file", "weight_lbs", "weight_kgs", "status"
+        ]
+        widgets = {
+            "cliente": forms.Select(attrs={"class": "form-select"}),
+            "status": forms.Select(attrs={"class": "form-select"}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        # Si no viene weight_lbs, asegúrate de que weight_kgs venga (o viceversa)
+        lbs = cleaned.get("weight_lbs")
+        kgs = cleaned.get("weight_kgs")
+        if not lbs and not kgs:
+            raise forms.ValidationError("Debes indicar el peso en lbs o en kgs.")
+        return cleaned
+
+
+class PieceWarehouseForm(forms.ModelForm):
+    class Meta:
+        model = PieceWarehouse
+        fields = ["type_of", "quantity", "description"]
+        widgets = {
+            "type_of": forms.Select(attrs={"class": "form-select"}),
+            "quantity": forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+            "description": forms.TextInput(attrs={"class": "form-control"}),
+        }
+
+
+class BasePieceFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        valid_forms = 0
+        for form in self.forms:
+            if getattr(form, "cleaned_data", None) and not form.cleaned_data.get("DELETE", False):
+                # cuenta formularios con type_of y quantity presentes
+                if form.cleaned_data.get("type_of") and form.cleaned_data.get("quantity"):
+                    valid_forms += 1
+        if valid_forms < 1:
+            raise forms.ValidationError("Agrega al menos una pieza (tipo de carga).")
+
+
+PieceWarehouseFormSet = forms.inlineformset_factory(
+    parent_model=Warehouse,
+    model=PieceWarehouse,
+    form=PieceWarehouseForm,
+    formset=BasePieceFormSet,
+    fields=["type_of", "quantity", "description"],
+    extra=1,          # muestra 1 fila por defecto
+    can_delete=True,  # permite borrar filas en edición
+    validate_min=True,
+    min_num=1,
+)
+
 class QuickClientForm(forms.Form):
     first_name = forms.CharField(label="Nombre", max_length=30)
     last_name = forms.CharField(label="Apellido", max_length=30)
     email = forms.EmailField(label="Email", required=False)
+
+
+class DispatchCreateForm(forms.ModelForm):
+    # checkboxes de warehouses van por separado
+    class Meta:
+        model = DispatchRequest
+        fields = ["method", "invoice"]
+        widgets = {
+            "method": forms.Select(attrs={"class": "form-select"}),
+        }
+
+class DispatchMethodForm(forms.ModelForm):
+    class Meta:
+        model = DispatchRequest
+        fields = ["method"]
+        widgets = {
+            "method": forms.Select(attrs={"class": "form-select"}),
+        }
+
+class SelectWarehousesForm(forms.Form):
+    warehouses = forms.ModelMultipleChoiceField(
+        queryset=Warehouse.objects.none(),
+        widget=forms.CheckboxSelectMultiple,
+        required=True,
+        label="Warehouses"
+    )
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop("user")
+        super().__init__(*args, **kwargs)
+        qs = Warehouse.objects.filter(cliente=user)
+        # Excluir los que ya estén en solicitudes abiertas
+        qs = qs.exclude(dispatch_items__dispatch__status__in=["PENDIENTE", "APROBADO"])
+        self.fields["warehouses"].queryset = qs.order_by("-created_at").distinct()
+
+
+class ApproveWithBOLForm(forms.ModelForm):
+    class Meta:
+        model = DispatchRequest
+        fields = ["bill_of_lading"]  # SOLO el archivo
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Obligar a subir archivo
+        self.fields["bill_of_lading"].required = True
+        self.fields["bill_of_lading"].widget.attrs.update({"class": "form-control"})
+
+class DispatchUploadBOLForm(forms.ModelForm):
+    class Meta:
+        model = DispatchRequest
+        fields = ["bill_of_lading"]
+
+

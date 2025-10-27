@@ -1,0 +1,36 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Solicitudes de Despacho</h2>
+  <table class="table table-striped mt-3">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Cliente</th>
+        <th>Método</th>
+        <th>Items</th>
+        <th>Estado</th>
+        <th>Fecha</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in dispatches %}
+      <tr>
+        <td>{{ d.id }}</td>
+        <td>{{ d.user.get_full_name|default:d.user.username }}</td>
+        <td>{{ d.get_method_display }}</td>
+        <td>{{ d.items.count }}</td>
+        <td>{{ d.get_status_display }}</td>
+        <td>{{ d.created_at|date:"d/m/Y H:i" }}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'dispatch_detail' d.id %}">Ver</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="text-center text-muted">Sin solicitudes</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

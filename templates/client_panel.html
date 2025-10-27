@@ -1,16 +1,89 @@
-{% extends 'base.html' %}
-
+{% extends "base.html" %}
 {% block content %}
+<div class="container mt-4">
+  <h2>Hola, {{ username }}</h2>
 
-<h1>Este es el panel cliente</h1>
-<p>
-    hola {{ username }}
-</p>
-<form method="POST" action="{% url 'logout' %}">
+  <h4 class="mt-4">Despachar Warehouses</h4>
+  {% if available %}
+  <form method="post" enctype="multipart/form-data" id="dispatch-form">
     {% csrf_token %}
-    <div>
-        <button type="submit">Cerrar sesión</button>
-    </div>
-</form>
 
+    <div class="row gy-3">
+      <div class="col-12 col-md-6">
+        <h5>Selecciona warehouses y sube su invoice</h5>
+
+        <div class="list-group">
+          {% for w in available %}
+          <label class="list-group-item d-flex align-items-start gap-3">
+            <input type="checkbox" name="warehouses" value="{{ w.pk }}" data-wr="{{ w.wr_number }}" class="form-check-input mt-1">
+            <div class="flex-grow-1">
+              <div class="fw-semibold">WR {{ w.wr_number }}</div>
+              <div class="small text-muted">
+                Carrier: {{ w.carrier }} · Shipper: {{ w.shipper }} · Peso: {{ w.weight_lbs }} lbs
+              </div>
+              <div class="mt-2">
+                <input type="file" name="invoice-{{ w.wr_number }}" class="form-control form-control-sm invoice-input" accept=".pdf,.jpg,.jpeg,.png">
+                <div class="form-text">Sube el invoice para este warehouse.</div>
+              </div>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6">
+        <h5>Datos del despacho</h5>
+        <div class="mb-3">
+          <label class="form-label">Método</label>
+          {{ method_form.method }}
+        </div>
+        <button class="btn btn-primary">Crear solicitudes</button>
+      </div>
+    </div>
+  </form>
+
+  <script>
+    // Validación cliente: si el checkbox está marcado, el file input debe tener archivo
+    (function () {
+      const form = document.getElementById('dispatch-form');
+      form.addEventListener('submit', function (e) {
+        const checks = form.querySelectorAll('input[type="checkbox"][name="warehouses"]');
+        let anyChecked = false, missing = [];
+        checks.forEach(chk => {
+          if (chk.checked) {
+            anyChecked = true;
+            const wr = chk.getAttribute('data-wr');
+            const fileInput = form.querySelector(`input[type="file"][name="invoice-${wr}"]`);
+            if (!fileInput || !fileInput.files || !fileInput.files.length) {
+              missing.push(wr);
+            }
+          }
+        });
+        if (!anyChecked) {
+          e.preventDefault();
+          alert("Debes seleccionar al menos un warehouse.");
+          return;
+        }
+        if (missing.length) {
+          e.preventDefault();
+          alert("Falta subir invoice para: " + missing.join(", "));
+        }
+      });
+    })();
+  </script>
+  {% else %}
+    <div class="alert alert-info mt-3">
+      No tienes warehouses disponibles para despachar.
+    </div>
+  {% endif %}
+
+  <hr class="my-4">
+  <a href="{% url 'my_dispatches' %}" class="btn btn-outline-primary me-2">Ver mis despachos (B/L)</a>
+  <a href="{% url 'my_warehouses' %}" class="btn btn-outline-secondary">Ver mis warehouses</a>
+
+  <form method="POST" action="{% url 'logout' %}" class="mt-3">
+    {% csrf_token %}
+    <button class="btn btn-outline-danger">Cerrar sesión</button>
+  </form>
+</div>
 {% endblock %}

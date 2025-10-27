@@ -5,10 +5,20 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.http import Http404, HttpResponse
 from django.contrib.auth.models import User
 from django.contrib import messages
+from core.emails import send_credentials_email
 from core.utils import generate_user, generate_password
 from core.models import Warehouse, PieceWarehouse
 from core.forms import WarehouseForm, PieceForm, QuickClientForm
-
+from django.utils import timezone
+from core.models import DispatchRequest, DispatchRequestItem
+from core.forms import DispatchCreateForm, SelectWarehousesForm
+from core.emails import send_dispatch_request_email_to_admin, send_dispatch_received_email_to_user
+from django.contrib.admin.views.decorators import staff_member_required
+from core.forms import DispatchUploadBOLForm
+from core.emails import send_bol_email_to_user
+from .forms import ApproveWithBOLForm, DispatchMethodForm, PieceWarehouseForm, PieceWarehouseFormSet
+from django.core.paginator import Paginator, EmptyPage
+from django.db.models import Q
 # AUTH VIEWS
 
 def login_view(request):
@@ -34,26 +44,165 @@ def logout_view(request):
     auth_logout(request)
     return redirect("login")
 
-
 @login_required(login_url='login')
 def index(request):
-    username = request.user.get_full_name().strip() or request.user.username
-    return render(request, "client_panel.html", {"username": username})
+    if request.user.is_staff:
+        return redirect("admin_panel")
 
+    available = (
+        Warehouse.objects
+        .filter(cliente=request.user)
+        .exclude(dispatch_items__dispatch__status__in=["PENDIENTE", "APROBADO"])
+        .order_by("-created_at")
+        .distinct()
+    )
+
+    if request.method == "POST":
+        select_form = SelectWarehousesForm(request.POST, user=request.user)
+        method_form = DispatchMethodForm(request.POST)
+
+        if not (select_form.is_valid() and method_form.is_valid()):
+            messages.error(request, "Revisa el formulario.")
+            return render(request, "client_panel.html", {
+                "username": request.user.get_full_name().strip() or request.user.username,
+                "available": available,
+                "select_form": select_form,
+                "method_form": method_form,
+            })
+
+        selected = list(select_form.cleaned_data["warehouses"])
+        method = method_form.cleaned_data["method"]
+
+        # 1) Validar que llegó un invoice por cada warehouse seleccionado
+        missing = []
+        files_map = {}
+        for w in selected:
+            # Usamos el wr_number en el nombre del campo de archivo
+            key = f"invoice-{w.wr_number}"
+            f = request.FILES.get(key)
+            if not f:
+                missing.append(w.wr_number)
+            else:
+                files_map[w] = f
+
+        if missing:
+            messages.error(
+                request,
+                "Falta subir invoice para: " + ", ".join(missing)
+            )
+            return render(request, "client_panel.html", {
+                "username": request.user.get_full_name().strip() or request.user.username,
+                "available": available,
+                "select_form": select_form,
+                "method_form": method_form,
+            })
+
+        # 2) Crear una solicitud por cada warehouse (cada una con su invoice)
+        created_ids = []
+        for w in selected:
+            disp = DispatchRequest.objects.create(
+                user=request.user,
+                method=method,
+                invoice=files_map[w],  # invoice específico
+                status="PENDIENTE",
+            )
+            DispatchRequestItem.objects.create(dispatch=disp, warehouse=w)
+
+            # (Opcional) marcar estado del warehouse
+            try:
+                w.status = "EN_DESPACHO"
+                w.save(update_fields=["status"])
+            except Exception:
+                pass
+
+            created_ids.append(str(disp.id))
+
+            # Notificar
+            try:
+                send_dispatch_request_email_to_admin(disp)
+            except Exception:
+                # no romper el flujo si el email falla
+                pass
+            if request.user.email:
+                try:
+                    send_dispatch_received_email_to_user(disp)
+                except Exception:
+                    pass
+
+        messages.success(
+            request,
+            f"Se crearon {len(created_ids)} solicitudes: #{', #'.join(created_ids)}."
+        )
+        return redirect("index")
+
+    else:
+        select_form = SelectWarehousesForm(user=request.user)
+        method_form = DispatchMethodForm()
+
+    return render(request, "client_panel.html", {
+        "username": request.user.get_full_name().strip() or request.user.username,
+        "available": available,
+        "select_form": select_form,
+        "method_form": method_form,
+    })
 
 # PANEL ADMIN
 
-@login_required(login_url='login')
+@staff_member_required
 def admin_panel(request):
-    if not request.user.is_staff:
-        # Solo el personal (staff) puede acceder
-        return redirect("index")
+    qs = Warehouse.objects.select_related("cliente").order_by("-created_at")
 
-    warehouses = Warehouse.objects.all().order_by('-created_at')
+    client_id = request.GET.get("client") or ""
+    q = (request.GET.get("q") or "").strip()
+    per_page = request.GET.get("per_page") or "10"
+    page = request.GET.get("page") or "1"
 
-    return render(request, 'admin_panel.html', {
-        'warehouses': warehouses,
-    })
+    if client_id:
+        qs = qs.filter(cliente_id=client_id)
+    if q:
+        qs = qs.filter(
+            Q(wr_number__icontains=q) |
+            Q(shipper__icontains=q) |
+            Q(carrier__icontains=q)
+        )
+
+    # tamaño de página seguro
+    try:
+        per_page_int = max(1, min(100, int(per_page)))
+    except ValueError:
+        per_page_int = 10
+
+    paginator = Paginator(qs, per_page_int)
+
+    # ⚠️ página segura (evita EmptyPage/PageNotAnInteger)
+    try:
+        page_number = int(page)
+    except (TypeError, ValueError):
+        page_number = 1
+    if page_number < 1:
+        page_number = 1
+    if page_number > paginator.num_pages and paginator.num_pages > 0:
+        page_number = paginator.num_pages
+
+    # Si prefieres aún más simple: page_obj = paginator.get_page(page)
+    try:
+        page_obj = paginator.page(page_number)
+    except EmptyPage:
+        page_obj = paginator.page(1)
+
+    clients = User.objects.filter(is_staff=False, is_active=True).order_by("username")
+
+    ctx = {
+        "warehouses": page_obj.object_list,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "clients": clients,
+        "client_id": client_id,
+        "q": q,
+        "per_page": str(per_page_int),
+        "per_page_choices": [10, 20, 50, 100],
+    }
+    return render(request, "admin_panel.html", ctx)
 
 
 # CRUD de Warehouses
@@ -76,6 +225,11 @@ def warehouse_detail(request, wr_number):
         'form': form,
     })
 
+# --- DETALLE ADMIN (sin filtrar por cliente)
+@staff_member_required
+def admin_warehouse_detail(request, wr_number):
+    wh = get_object_or_404(Warehouse, wr_number=wr_number)
+    return render(request, "admin/warehouse_detail.html", {"wh": wh})
 
 @login_required(login_url='login')
 def delete_warehouse(request, wr_number):
@@ -93,7 +247,7 @@ def delete_warehouse(request, wr_number):
 
 
 @login_required(login_url='login')
-def create_warehouse(request):
+def create_warehouse1(request):
     """
     Crear un nuevo warehouse desde el panel.
     """
@@ -113,106 +267,107 @@ def create_warehouse(request):
 
     return render(request, 'warehouse_form.html', {'form': form})
 
-@login_required(login_url='login')
-def edit_warehouse(request, wr_number):
-    """
-    Editar un warehouse existente identificado por wr_number.
-    """
-    if not request.user.is_staff:
-        return redirect("index")
-
-    warehouse = get_object_or_404(Warehouse, wr_number=wr_number)
-
+@staff_member_required
+def create_warehouse(request):
     if request.method == "POST":
-        form = WarehouseForm(request.POST, request.FILES, instance=warehouse)
-        if form.is_valid():
-            form.save()
-            messages.success(request, f"Warehouse {wr_number} actualizado.")
-            return redirect('warehouse_detail', wr_number=wr_number)
-        else:
-            messages.error(request, "Revisá los datos del formulario.")
+        form = WarehouseForm(request.POST, request.FILES)
+        formset = PieceWarehouseFormSet(request.POST, prefix="pieces")
+        if form.is_valid() and formset.is_valid():
+            wh = form.save()
+            formset.instance = wh
+            formset.save()
+            messages.success(request, f"Warehouse {wh.wr_number} creado con sus piezas.")
+            return redirect("admin_warehouse_detail", wr_number=wh.wr_number)
+        messages.error(request, "Revisa los campos: faltan datos del warehouse o de las piezas.")
     else:
-        form = WarehouseForm(instance=warehouse)
+        form = WarehouseForm()
+        formset = PieceWarehouseFormSet(prefix="pieces")
 
-    return render(request, 'warehouse_form.html', {
-        'form': form,
-        'is_edit': True,
-        'warehouse': warehouse,
+    return render(request, "admin/create_warehouse.html", {
+        "form": form,
+        "formset": formset,
+        "mode": "create",
+    })
+
+
+@staff_member_required
+def edit_warehouse(request, wr_number):
+    wh = get_object_or_404(Warehouse, wr_number=wr_number)
+    if request.method == "POST":
+        form = WarehouseForm(request.POST, request.FILES, instance=wh)
+        formset = PieceWarehouseFormSet(request.POST, instance=wh, prefix="pieces")
+        if form.is_valid() and formset.is_valid():
+            wh = form.save()
+            formset.instance = wh
+            formset.save()
+            messages.success(request, f"Warehouse {wh.wr_number} actualizado.")
+            return redirect("admin_warehouse_detail", wr_number=wh.wr_number)
+        messages.error(request, "Corrige los errores del formulario.")
+    else:
+        form = WarehouseForm(instance=wh)
+        formset = PieceWarehouseFormSet(instance=wh, prefix="pieces")
+
+    return render(request, "admin/edit_warehouse.html", {
+        "form": form,
+        "formset": formset,
+        "mode": "edit",
+        "wh": wh,
     })
 
 
 # CRUD de PieceWarehouse
 
-@login_required(login_url='login')
+@staff_member_required
 def add_piece(request, wr_number):
-    if not request.user.is_staff:
-        return redirect("index")
-
     warehouse = get_object_or_404(Warehouse, wr_number=wr_number)
-
     if request.method == "POST":
-        form = PieceForm(request.POST)
+        form = PieceWarehouseForm(request.POST)
         if form.is_valid():
             piece = form.save(commit=False)
-            piece.warehouse = warehouse   
+            piece.warehouse = warehouse
             piece.save()
-            messages.success(request, "Pieza agregada correctamente.")
-            return redirect('warehouse_detail', wr_number=wr_number)
-        # Si es inválido, re-renderiza mostrando errores:
-        pieces = warehouse.pieces.all().order_by('type_of')
-        return render(request, 'warehouse_detail.html', {
-            'warehouse': warehouse,
-            'pieces': pieces,
-            'form': form,  # con errores
-        })
-    return redirect('warehouse_detail', wr_number=wr_number)
-
-
-@login_required(login_url='login')
-def edit_piece(request, pk):
-    """
-    Editar una pieza existente.
-    """
-    if not request.user.is_staff:
-        return redirect("index")
-
-    piece = get_object_or_404(PieceWarehouse, pk=pk)
-    if request.method == "POST":
-        form = PieceForm(request.POST, instance=piece)
-        if form.is_valid():
-            # Asegurarse de no permitir cambiar la pieza a otro warehouse
-            obj = form.save(commit=False)
-            obj.warehouse = piece.warehouse
-            obj.save()
-            messages.success(request, "Pieza actualizada.")
-            return redirect('warehouse_detail', wr_number=piece.warehouse.wr_number)
-        else:
-            messages.error(request, "Revisá los datos.")
+            messages.success(request, "Pieza agregada.")
+            return redirect("admin_warehouse_detail", wr_number=warehouse.wr_number)
     else:
-        form = PieceForm(instance=piece)
-
-    return render(request, 'piece_form.html', {
-        'form': form,
-        'warehouse': piece.warehouse
+        form = PieceWarehouseForm()
+    return render(request, "piece_form.html", {
+        "form": form,
+        "warehouse": warehouse,
+        "title": "Agregar pieza",
     })
 
+@staff_member_required
+def edit_piece(request, pk):
+    piece = get_object_or_404(PieceWarehouse, pk=pk)
+    warehouse = piece.warehouse
+    if request.method == "POST":
+        form = PieceWarehouseForm(request.POST, instance=piece)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Pieza actualizada.")
+            return redirect("admin_warehouse_detail", wr_number=warehouse.wr_number)
+    else:
+        form = PieceWarehouseForm(instance=piece)
+    return render(request, "piece_form.html", {
+        "form": form,
+        "warehouse": warehouse,
+        "title": "Editar pieza",
+    })
 
-@login_required(login_url='login')
+@staff_member_required
 def delete_piece(request, pk):
-    """
-    Eliminar una pieza (con confirmación reutilizable).
-    """
-    if not request.user.is_staff:
-        return redirect("index")
-
     piece = get_object_or_404(PieceWarehouse, pk=pk)
     wr_number = piece.warehouse.wr_number
     if request.method == "POST":
         piece.delete()
         messages.success(request, "Pieza eliminada.")
-        return redirect('warehouse_detail', wr_number=wr_number)
-
-    return render(request, 'confirm_delete.html', {'warehouse': piece.warehouse, 'piece': piece})
+        return redirect("admin_warehouse_detail", wr_number=wr_number)
+    # confirmación simple
+    return render(request, "confirm_delete.html", {
+        "title": "Eliminar pieza",
+        "message": f"¿Eliminar la pieza '{piece.get_type_of_display()}' de {wr_number}?",
+        "back_url": redirect("admin_warehouse_detail", wr_number=wr_number).url,
+    })
 
 
 @login_required(login_url='login')
@@ -266,17 +421,16 @@ def quick_create_client(request):
 
             # Crear usuario cliente
             user = User.objects.create_user(
-                username=username,
-                password=password,
-                first_name=first,
-                last_name=last,
-                is_active=True,
-                is_staff=False,   # Cliente, no staff
-            )
-            # Si incluyes email en el form:
-            # user.email = form.cleaned_data.get("email", "")
-            # user.save(update_fields=["email"])
-
+            username=username,
+            password=password,
+            email=form.cleaned_data.get("email") or "",
+            first_name=first,
+            last_name=last,
+            is_staff=False,
+            is_active=True,
+        )
+        if user.email:
+            send_credentials_email(user, password)
             messages.success(
                 request,
                 f"Cliente creado: usuario '{username}'. Guarda esta contraseña (solo se muestra una vez): {password}"
@@ -289,3 +443,93 @@ def quick_create_client(request):
     return render(request, "panel/quick_client_form.html", {
         "form": form
     })
+
+
+@staff_member_required
+def dispatch_list(request):
+    qs = DispatchRequest.objects.order_by("-created_at")
+    return render(request, "dispatch_list.html", {"dispatches": qs})
+
+@staff_member_required
+def dispatch_detail(request, pk):
+    disp = get_object_or_404(DispatchRequest, pk=pk)
+    return render(request, "dispatch_detail.html", {"disp": disp})
+
+@staff_member_required
+def upload_bol(request, pk):
+    disp = get_object_or_404(DispatchRequest, pk=pk)
+
+    if request.method == "POST":
+        form = ApproveWithBOLForm(request.POST, request.FILES, instance=disp)
+        if form.is_valid():
+            disp = form.save(commit=False)
+            disp.bol_uploaded_at = timezone.now()
+            disp.status = "APROBADO"   # o "COMPLETADO" si prefieres
+            disp.save()
+
+            try:
+                send_bol_email_to_user(disp)
+                messages.success(request, "B/L subido y enviado al cliente por correo.")
+            except Exception as e:
+                messages.warning(request, f"B/L subido, pero falló el envío de correo: {e}")
+
+            return redirect("dispatch_detail", pk=disp.pk)
+        messages.error(request, "Debes subir el archivo B/L (obligatorio).")
+    else:
+        form = ApproveWithBOLForm(instance=disp)
+
+    return render(request, "upload_bol.html", {"form": form, "disp": disp})
+
+@staff_member_required
+def send_bol_to_user(request, pk):
+    disp = get_object_or_404(DispatchRequest, pk=pk)
+    if not disp.bill_of_lading:
+        messages.error(request, "Primero debes subir el B/L.")
+        return redirect("dispatch_detail", pk=pk)
+    try:
+        send_bol_email_to_user(disp)
+        disp.status = "COMPLETADO"
+        disp.save(update_fields=["status"])
+        messages.success(request, "B/L enviado al cliente por correo.")
+    except Exception as e:
+        messages.error(request, f"No se pudo enviar el correo: {e}")
+    return redirect("dispatch_detail", pk=pk)
+
+@login_required(login_url='login')
+def my_warehouses(request):
+    qs = Warehouse.objects.filter(cliente=request.user).order_by("-created_at")
+    return render(request, "my_warehouses.html", {"warehouses": qs})
+
+@login_required(login_url='login')
+def warehouse_detail(request, wr_number):
+    wh = get_object_or_404(Warehouse, wr_number=wr_number, cliente=request.user)
+    return render(request, "warehouse_detail.html", {"wh": wh})
+
+
+@login_required(login_url='login')
+def my_dispatches(request):
+    """
+    Lista solo las solicitudes del usuario que ya tienen B/L subido.
+    """
+    qs = (
+        DispatchRequest.objects
+        .filter(user=request.user, bill_of_lading__isnull=False)
+        .order_by('-bol_uploaded_at', '-created_at')
+        .prefetch_related('items__warehouse')
+    )
+    return render(request, "my_dispatches.html", {"dispatches": qs})
+
+@login_required(login_url='login')
+def my_dispatch_detail(request, pk):
+    """
+    Detalle de una solicitud específica del usuario; 
+    asegura propiedad y muestra link al B/L + WRs incluidos.
+    """
+    disp = get_object_or_404(
+        DispatchRequest.objects.prefetch_related('items__warehouse'),
+        pk=pk, user=request.user
+    )
+    # (Opcional) podrías restringir que solo se vea si hay B/L:
+    if not disp.bill_of_lading:
+        raise Http404("Este despacho aún no tiene B/L disponible.")
+    return render(request, "my_dispatch_detail.html", {"disp": disp})

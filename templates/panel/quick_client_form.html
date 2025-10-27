@@ -2,8 +2,8 @@
 {% block title %}Crear cliente{% endblock %}
 {% block content %}
 <div class="container mt-4" style="max-width: 640px;">
-  <h2>Crear cliente rápido</h2>
-  <p class="text-muted">Solo ingresa el nombre y el apellido. El usuario y la contraseña se generan automáticamente.</p>
+  <h2>Crear cliente</h2>
+  <p class="text-muted">Ingresa el nombre y el apellido. El usuario y la contraseña se generan automáticamente.</p>
 
   <form method="post" class="card card-body mt-3">
     {% csrf_token %}
@@ -24,13 +24,9 @@
       {% for e in form.email.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
     </div>
     <div class="d-flex gap-2">
-      <button class="btn btn-success" type="submit">Crear cliente</button>
+      <button class="btn btn-primary" type="submit">Crear cliente</button>
       <a class="btn btn-secondary" href="{% url 'clients_list' %}">Cancelar</a>
     </div>
   </form>
-
-  <div class="alert alert-info mt-3">
-    <strong>Nota:</strong> Las credenciales se mostrarán una sola vez mediante un mensaje en la parte superior de la página.
-  </div>
 </div>
 {% endblock %}

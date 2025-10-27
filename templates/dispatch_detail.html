@@ -1,0 +1,34 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Solicitud #{{ disp.id }}</h2>
+  <p><b>Cliente:</b> {{ disp.user.get_full_name|default:disp.user.username }}</p>
+  <p><b>Método:</b> {{ disp.get_method_display }}</p>
+  <p><b>Estado:</b> {{ disp.get_status_display }}</p>
+  <p><b>Invoice:</b>
+    {% if disp.invoice %}
+      <a href="{{ disp.invoice.url }}" target="_blank">Descargar</a>
+    {% else %} — {% endif %}
+  </p>
+
+  <h5>Warehouses</h5>
+  <ul>
+    {% for it in disp.items.all %}
+      <li>{{ it.warehouse.wr_number }}</li>
+    {% endfor %}
+  </ul>
+
+  <hr>
+  <h5>Bill of Lading</h5>
+  {% if disp.bill_of_lading %}
+    <p>
+      <a href="{{ disp.bill_of_lading.url }}" target="_blank">Ver B/L</a>
+      {% if disp.bol_uploaded_at %}<br><small>Subido: {{ disp.bol_uploaded_at|date:"d/m/Y H:i" }}</small>{% endif %}
+    </p>
+  {% else %}
+    <a class="btn btn-primary" href="{% url 'upload_bol' disp.id %}">
+      Aprobar y subir B/L (obligatorio)
+    </a>
+  {% endif %}
+</div>
+{% endblock %}

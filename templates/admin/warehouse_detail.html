@@ -1,0 +1,89 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="container mt-4" style="max-width: 1000px;">
+  <div class="d-flex align-items-center justify-content-between">
+    <h2>Warehouse {{ wh.wr_number }}</h2>
+    <div>
+      <a class="btn btn-outline-secondary me-2" href="{% url 'admin_panel' %}">Volver</a>
+      <a class="btn btn-primary" href="{% url 'edit_warehouse' wh.wr_number %}">Editar</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-2">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header fw-semibold">Datos</div>
+        <div class="card-body">
+          <p><b>Cliente:</b> {{ wh.cliente.get_full_name|default:wh.cliente.username }}</p>
+          <p><b>Shipper:</b> {{ wh.shipper }}</p>
+          <p><b>Carrier:</b> {{ wh.carrier }}</p>
+          <p><b>Container #:</b> {{ wh.container_number|default:"—" }}</p>
+          <p><b>Estado:</b> {{ wh.get_status_display }}</p>
+          <p><b>Creado:</b> {{ wh.created_at|date:"d/m/Y H:i" }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header fw-semibold">Pesos</div>
+        <div class="card-body">
+          <p><b>Peso (lbs):</b> {{ wh.weight_lbs|default:"—" }}</p>
+          <p><b>Peso (kgs):</b> {{ wh.weight_kgs|default:"—" }}</p>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-header fw-semibold">Archivo</div>
+        <div class="card-body">
+          {% if wh.uploaded_file %}
+            <a href="{{ wh.uploaded_file.url }}" target="_blank" rel="noopener">Descargar documento</a>
+          {% else %}
+            <span class="text-muted">Sin archivo adjunto.</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-header fw-semibold d-flex justify-content-between">
+      <span>Piezas (Tipos de carga)</span>
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'add_piece' wh.wr_number %}">+ Agregar pieza</a>
+    </div>
+    <div class="card-body">
+      {% if wh.pieces.all %}
+      <div class="table-responsive">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Cantidad</th>
+              <th>Descripción</th>
+              <th style="width: 160px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in wh.pieces.all %}
+            <tr>
+              <td>{{ p.get_type_of_display }}</td>
+              <td>{{ p.quantity }}</td>
+              <td>{{ p.description|default:"—" }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'edit_piece' p.pk %}">Editar</a>
+                <a class="btn btn-sm btn-outline-danger ms-1" href="{% url 'delete_piece' p.pk %}">Eliminar</a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center text-muted">Sin piezas cargadas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="text-muted">Sin piezas cargadas.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
