@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+import mimetypes, os
 
 class Warehouse(models.Model):
 
@@ -15,8 +16,14 @@ class Warehouse(models.Model):
     container_number = models.CharField(max_length=100, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     weight_lbs = models.FloatField(null=True)
-    weight_kgs = models.FloatField()
+    weight_kgs = models.FloatField(null=True)
     status = models.CharField(max_length=20, choices=STATUS, default='PENDIENTE')
+    # Nuevos campos 
+    foots = models.FloatField(null=True)
+    tracking = models.CharField(max_length=100, null=True)
+    invoice_number = models.CharField(max_length=100, null=True)
+    po = models.CharField(max_length=100, blank=True)
+
 
     uploaded_file = models.FileField(upload_to='warehouse_files/', blank=True, null=True)
 
@@ -124,3 +131,36 @@ class PieceItem(models.Model):
 
     def __str__(self):
         return f"{self.piece.warehouse.wr_number} - {self.piece.get_type_of_display()} #{self.index}"
+
+
+class WarehouseDocument(models.Model):
+    warehouse = models.ForeignKey("Warehouse", on_delete=models.CASCADE, related_name="documents")
+    file = models.FileField(upload_to="warehouse_docs/%Y/%m/")
+    original_name = models.CharField(max_length=255, blank=True)
+    content_type = models.CharField(max_length=120, blank=True)
+    size_bytes = models.BigIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ("-uploaded_at", "id")
+
+    def save(self, *args, **kwargs):
+        # autocompletar metadatos
+        if self.file and not self.original_name:
+            self.original_name = os.path.basename(self.file.name)
+        if self.file and hasattr(self.file, "file") and hasattr(self.file.file, "size"):
+            self.size_bytes = self.file.file.size
+        if self.file and not self.content_type:
+            guess, _ = mimetypes.guess_type(self.file.name)
+            self.content_type = guess or "application/octet-stream"
+        super().save(*args, **kwargs)
+
+    # helpers UI
+    @property
+    def is_image(self):
+        return (self.content_type or "").startswith("image/")
+
+    @property
+    def filename(self):
+        return os.path.basename(self.original_name or self.file.name)

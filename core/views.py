@@ -1,14 +1,16 @@
+import io
+import zipfile
 from django.db import transaction
 from django.forms import inlineformset_factory
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
-from django.http import Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse
 from django.contrib.auth.models import User
 from django.contrib import messages
 from core.emails import send_credentials_email
 from core.utils import generate_user, generate_password
-from core.models import PieceItem, Warehouse, PieceWarehouse
+from core.models import PieceItem, Warehouse, PieceWarehouse, WarehouseDocument
 from core.forms import WarehouseForm, PieceForm, QuickClientForm
 from django.utils import timezone
 from core.models import DispatchRequest, DispatchRequestItem
@@ -20,6 +22,7 @@ from core.emails import send_bol_email_to_user
 from .forms import ApproveWithBOLForm, DispatchMethodForm, PieceItemForm, PieceItemFormSet, PieceWarehouseForm, PieceWarehouseFormSet
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
+from django.utils.encoding import smart_str
 # AUTH VIEWS
 
 def login_view(request):
@@ -602,3 +605,49 @@ def my_dispatch_detail(request, pk):
     if not disp.bill_of_lading:
         raise Http404("Este despacho aún no tiene B/L disponible.")
     return render(request, "my_dispatch_detail.html", {"disp": disp})
+
+
+@staff_member_required
+def warehouse_files(request, wr_number):
+    wh = get_object_or_404(Warehouse, wr_number=wr_number)
+    if request.method == "POST":
+        # multi-upload
+        files = request.FILES.getlist("files")
+        if not files:
+            messages.warning(request, "No seleccionaste archivos.")
+            return redirect("warehouse_files", wr_number=wr_number)
+        created = 0
+        for f in files:
+            doc = WarehouseDocument(warehouse=wh, file=f, uploaded_by=request.user, original_name=f.name)
+            doc.save()
+            created += 1
+        messages.success(request, f"Se subieron {created} archivo(s).")
+        return redirect("warehouse_files", wr_number=wr_number)
+
+    docs = wh.documents.all()
+    return render(request, "admin/warehouse_files.html", {"wh": wh, "docs": docs})
+
+@staff_member_required
+def download_doc(request, wr_number, pk):
+    wh = get_object_or_404(Warehouse, wr_number=wr_number)
+    doc = get_object_or_404(WarehouseDocument, pk=pk, warehouse=wh)
+    resp = FileResponse(doc.file.open("rb"), as_attachment=True, filename=smart_str(doc.filename))
+    return resp
+
+@staff_member_required
+def download_all_docs(request, wr_number):
+    wh = get_object_or_404(Warehouse, wr_number=wr_number)
+    docs = list(wh.documents.all())
+    if not docs:
+        messages.info(request, "Este warehouse no tiene archivos.")
+        return redirect("warehouse_files", wr_number=wr_number)
+
+    mem = io.BytesIO()
+    with zipfile.ZipFile(mem, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for d in docs:
+            # nombre legible dentro del zip
+            arcname = f"{wh.wr_number}/{d.filename}"
+            zf.writestr(arcname, d.file.read())
+    mem.seek(0)
+    filename = f"WR{wh.wr_number}_files.zip"
+    return FileResponse(mem, as_attachment=True, filename=filename)

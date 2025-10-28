@@ -70,7 +70,7 @@
             <a class="nav-link {% if request.resolver_match.url_name == 'create_warehouse' %}active{% endif %}" href="{% url 'create_warehouse' %}">Nuevo Warehouse</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if request.resolver_match.url_name == 'create_warehouse' %}active{% endif %}" href="{% url 'dispatch_list' %}">Solicitudes de despacho</a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'dispatch_list' %}active{% endif %}" href="{% url 'dispatch_list' %}">Solicitudes de despacho</a>
           </li>
         </ul>
 

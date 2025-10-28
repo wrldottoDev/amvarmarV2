@@ -21,13 +21,6 @@ class UserUpdateForm(UserChangeForm):
         model = User
         fields = ["username", "email", "first_name", "last_name", "is_staff", "is_active"]
 
-class WarehouseForm(forms.ModelForm):
-    class Meta:
-        model = Warehouse
-        fields = ["cliente", "wr_number", "shipper", "carrier", "container_number",
-                  "weight_lbs", "weight_kgs", "uploaded_file"]
-        widgets = {"wr_number": forms.TextInput(attrs={"class": "form-control"})}
-
 class PieceForm(forms.ModelForm):
     class Meta:
         model = PieceWarehouse
@@ -37,8 +30,19 @@ class WarehouseForm(forms.ModelForm):
     class Meta:
         model = Warehouse
         fields = [
-            "wr_number", "cliente", "shipper", "carrier", "container_number",
-            "uploaded_file", "weight_lbs", "weight_kgs", "status"
+            "cliente",
+            "wr_number",
+            "shipper",
+            "carrier",
+            "container_number",
+            "weight_lbs",
+            "weight_kgs",
+            "foots",
+            "tracking",
+            "invoice_number",
+            "po",
+            "uploaded_file",
+            "status",
         ]
         widgets = {
             "cliente": forms.Select(attrs={"class": "form-select"}),

@@ -1,14 +1,31 @@
 {% extends "panel/base.html" %}
 {% block content %}
 <div class="container mt-4" style="max-width: 1000px;">
+
+  <!-- Header + Actions -->
   <div class="d-flex align-items-center justify-content-between">
-    <h2>Warehouse {{ wh.wr_number }}</h2>
-    <div>
-      <a class="btn btn-outline-secondary me-2" href="{% url 'admin_panel' %}">Volver</a>
+    <h2>WR-{{ wh.wr_number }}</h2>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{% url 'admin_panel' %}">Volver</a>
+      <a class="btn btn-outline-primary" href="{% url 'warehouse_files' wh.wr_number %}">Files</a>
       <a class="btn btn-primary" href="{% url 'edit_warehouse' wh.wr_number %}">Editar</a>
     </div>
   </div>
 
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mt-3">
+    <li class="nav-item">
+      <span class="nav-link active" aria-current="page">Pieces</span>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'edit_items_for_warehouse' wh.wr_number %}">Items</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'warehouse_files' wh.wr_number %}">Files</a>
+    </li>
+  </ul>
+
+  <!-- Top cards -->
   <div class="row g-3 mt-2">
     <div class="col-md-6">
       <div class="card">
@@ -46,13 +63,15 @@
     </div>
   </div>
 
+  <!-- Pieces table -->
   <div class="card mt-4">
-    <div class="card-header fw-semibold d-flex justify-content-between">
+    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
       <span>Piezas (Tipos de carga)</span>
       <a class="btn btn-sm btn-outline-primary" href="{% url 'add_piece' wh.wr_number %}">+ Agregar pieza</a>
     </div>
+
     <div class="card-body">
-      {% if wh.pieces.all %}
+      {% if wh.pieces.exists %}
       <div class="table-responsive">
         <table class="table table-striped align-middle">
           <thead>
@@ -60,52 +79,60 @@
               <th>Tipo</th>
               <th>Cantidad</th>
               <th>Descripción</th>
-              <th style="width: 160px;"></th>
+              <th style="width: 220px;"></th>
             </tr>
           </thead>
           <tbody>
             {% for p in wh.pieces.all %}
-  <tr>
-    <td>{{ p.get_type_of_display }}</td>
-    <td>{{ p.quantity }}</td>
-    <td>{{ p.description|default:"—" }}</td>
-    <td class="text-end">
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'edit_piece' p.pk %}">Editar</a>
-      <a class="btn btn-sm btn-outline-primary" href="{% url 'edit_items_for_warehouse' wh.wr_number %}">Ítems</a>
-      <a class="btn btn-sm btn-outline-danger ms-1" href="{% url 'delete_piece' p.pk %}">Eliminar</a>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="4">
-      {% if p.items.exists %}
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead>
               <tr>
-                <th>#</th><th>lbs</th><th>kgs</th><th>Largo</th><th>Ancho</th><th>Alto</th><th>Notas</th>
+                <td>{{ p.get_type_of_display }}</td>
+                <td>{{ p.quantity }}</td>
+                <td>{{ p.description|default:"—" }}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'edit_piece' p.pk %}">Editar</a>
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'edit_items_for_warehouse' wh.wr_number %}">Ítems</a>
+                  <a class="btn btn-sm btn-outline-danger ms-1" href="{% url 'delete_piece' p.pk %}">Eliminar</a>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {% for it in p.items.all %}
-                <tr>
-                  <td>{{ it.index }}</td>
-                  <td>{{ it.weight_lbs|default:"—" }}</td>
-                  <td>{{ it.weight_kgs|default:"—" }}</td>
-                  <td>{{ it.length_cm|default:"—" }}</td>
-                  <td>{{ it.width_cm|default:"—" }}</td>
-                  <td>{{ it.height_cm|default:"—" }}</td>
-                  <td>{{ it.notes|default:"—" }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <span class="text-muted">Sin ítems.</span>
-      {% endif %}
-    </td>
-  </tr>
-{% endfor %}
+
+              <!-- Items for this piece -->
+              <tr>
+                <td colspan="4">
+                  {% if p.items.exists %}
+                    <div class="table-responsive">
+                      <table class="table table-sm mb-0">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>lbs</th>
+                            <th>kgs</th>
+                            <th>Largo (cm)</th>
+                            <th>Ancho (cm)</th>
+                            <th>Alto (cm)</th>
+                            <th>Notas</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for it in p.items.all %}
+                            <tr>
+                              <td>{{ it.index }}</td>
+                              <td>{{ it.weight_lbs|default:"—" }}</td>
+                              <td>{{ it.weight_kgs|default:"—" }}</td>
+                              <td>{{ it.length_cm|default:"—" }}</td>
+                              <td>{{ it.width_cm|default:"—" }}</td>
+                              <td>{{ it.height_cm|default:"—" }}</td>
+                              <td>{{ it.notes|default:"—" }}</td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  {% else %}
+                    <span class="text-muted">Sin ítems.</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>

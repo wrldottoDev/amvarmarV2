@@ -2,7 +2,6 @@
 {% block content %}
 <div class="container mt-4" style="max-width: 1000px;">
   <h3>Editar pieza — {{ piece.get_type_of_display }} (WR{{ piece.warehouse.wr_number }})</h3>
-
   <form method="post" class="card card-body mt-3">
     {% csrf_token %}
 

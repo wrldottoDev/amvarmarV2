@@ -62,6 +62,10 @@ urlpatterns = [
     path("admin-panel/<str:wr_number>/edit/", views.edit_warehouse, name="edit_warehouse"),
     path("admin-panel/<str:wr_number>/delete/", views.delete_warehouse, name="delete_warehouse"),
 
+    path("admin-panel/<str:wr_number>/files/", views.warehouse_files, name="warehouse_files"),
+    path("admin-panel/<str:wr_number>/files/<int:pk>/download/", views.download_doc, name="download_doc"),
+    path("admin-panel/<str:wr_number>/files/download-all/", views.download_all_docs, name="download_all_docs"),
+
     # Piezas (por pk o wr_number)
     path("admin-panel/<str:wr_number>/pieces/add/", views.add_piece, name="add_piece"),
     path("admin-panel/pieces/<int:pk>/edit/", views.edit_piece, name="edit_piece"),
