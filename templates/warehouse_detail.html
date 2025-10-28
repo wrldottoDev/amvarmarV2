@@ -47,6 +47,33 @@
             {% empty %}
             <tr><td colspan="4" class="text-center text-muted">Sin piezas cargadas.</td></tr>
             {% endfor %}
+            {% for p in wh.pieces.all %}
+  <h6 class="mt-3">{{ p.get_type_of_display }} — cantidad: {{ p.quantity }} — {{ p.description|default:"—" }}</h6>
+  {% if p.items.exists %}
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead>
+          <tr><th>#</th><th>lbs</th><th>kgs</th><th>Largo</th><th>Ancho</th><th>Alto</th><th>Notas</th></tr>
+        </thead>
+        <tbody>
+          {% for it in p.items.all %}
+            <tr>
+              <td>{{ it.index }}</td>
+              <td>{{ it.weight_lbs|default:"—" }}</td>
+              <td>{{ it.weight_kgs|default:"—" }}</td>
+              <td>{{ it.length_cm|default:"—" }}</td>
+              <td>{{ it.width_cm|default:"—" }}</td>
+              <td>{{ it.height_cm|default:"—" }}</td>
+              <td>{{ it.notes|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-muted">Sin ítems.</p>
+  {% endif %}
+{% endfor %}
           </tbody>
         </table>
       </div>

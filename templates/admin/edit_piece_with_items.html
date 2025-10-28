@@ -1,0 +1,73 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="container mt-4" style="max-width: 1000px;">
+  <h3>Editar pieza — {{ piece.get_type_of_display }} (WR{{ piece.warehouse.wr_number }})</h3>
+
+  <form method="post" class="card card-body mt-3">
+    {% csrf_token %}
+
+    <h5 class="mb-2">Datos del grupo</h5>
+    {{ piece_form.non_field_errors }}
+    <div class="row g-3">
+      {% for field in piece_form %}
+        <div class="col-md-4">
+          <label class="form-label">{{ field.label }}</label>
+          {{ field }}
+          {% for e in field.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+      <button name="sync_items" value="1" class="btn btn-outline-primary" type="submit">
+        Sincronizar ítems con cantidad ({{ piece.quantity }})
+      </button>
+    </div>
+
+    <hr class="my-4">
+
+    <h5 class="mb-2">Ítems individuales ({{ piece.items.count }})</h5>
+    {{ formset.non_field_errors }}
+    {{ formset.management_form }}
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Peso (lbs)</th>
+            <th>Peso (kgs)</th>
+            <th>Largo (cm)</th>
+            <th>Ancho (cm)</th>
+            <th>Alto (cm)</th>
+            <th>Notas</th>
+            <th>Eliminar</th>
+          </tr>
+        </thead>
+        <tbody id="items-container">
+          {% for f in formset %}
+          <tr class="item-row">
+            {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+            <td style="max-width:80px">{{ f.index }}</td>
+            <td>{{ f.weight_lbs }}</td>
+            <td>{{ f.weight_kgs }}</td>
+            <td>{{ f.length_cm }}</td>
+            <td>{{ f.width_cm }}</td>
+            <td>{{ f.height_cm }}</td>
+            <td>{{ f.notes }}</td>
+            <td class="text-center">{{ f.DELETE }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="text-muted text-center">Sin ítems. Usa “Sincronizar ítems con cantidad”.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex justify-content-between mt-3">
+      <a href="{% url 'admin_warehouse_detail' piece.warehouse.wr_number %}" class="btn btn-outline-secondary">Cancelar</a>
+      <button class="btn btn-primary">Guardar cambios</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -73,4 +73,6 @@ urlpatterns = [
         views.admin_warehouse_detail,           # <-- vista ADMIN correcta
         name="admin_warehouse_detail",
     ),
+
+    path("admin-panel/<str:wr_number>/items/", views.edit_items_for_warehouse, name="edit_items_for_warehouse"),
 ]

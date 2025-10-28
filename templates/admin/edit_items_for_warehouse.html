@@ -1,0 +1,79 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="container mt-4" style="max-width: 1100px;">
+  <div class="d-flex justify-content-between align-items-center">
+    <h3>Ítems por pieza — WR{{ wh.wr_number }}</h3>
+    <a href="{% url 'admin_warehouse_detail' wh.wr_number %}" class="btn btn-outline-secondary">Volver al detalle</a>
+  </div>
+
+  <p class="text-muted">Completa el peso y las medidas <strong>por unidad</strong> de cada grupo de piezas.</p>
+
+  <form method="post">
+    {% csrf_token %}
+
+    {% for piece, fs in bundles %}
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <strong>Pieza #{{ piece.id }}</strong> —
+            {{ piece.get_type_of_display }} (cantidad: {{ piece.quantity }})
+            — {{ piece.description|default:"sin descripción" }}
+          </div>
+          <div>
+            <button name="sync_piece_id" value="{{ piece.id }}" class="btn btn-sm btn-outline-primary"
+                    title="Ajusta el número de filas al 'quantity' de esta pieza">
+              Sincronizar ítems
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          {{ fs.non_field_errors }}
+          {{ fs.management_form }}
+
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th style="width:80px">#</th>
+                  <th>Peso (lbs)</th>
+                  <th>Peso (kgs)</th>
+                  <th>Largo (cm)</th>
+                  <th>Ancho (cm)</th>
+                  <th>Alto (cm)</th>
+                  <th>Notas</th>
+                  <th style="width:90px">Eliminar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for f in fs %}
+                <tr>
+                  {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+                  <td>{{ f.index }}</td>
+                  <td>{{ f.weight_lbs }}</td>
+                  <td>{{ f.weight_kgs }}</td>
+                  <td>{{ f.length_cm }}</td>
+                  <td>{{ f.width_cm }}</td>
+                  <td>{{ f.height_cm }}</td>
+                  <td>{{ f.notes }}</td>
+                  <td class="text-center">{{ f.DELETE }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="8" class="text-muted text-center">
+                    Sin ítems para esta pieza. Usa “Sincronizar ítems”.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+
+    <div class="d-flex justify-content-end">
+      <button class="btn btn-primary">Guardar todos los ítems</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

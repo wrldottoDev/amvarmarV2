@@ -1,7 +1,8 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.auth.models import User
-from .models import DispatchRequest, Warehouse, PieceWarehouse
+from .models import DispatchRequest, PieceItem, Warehouse, PieceWarehouse
+from django.forms import inlineformset_factory, BaseInlineFormSet
 
 class UserCreateForm(UserCreationForm):
     email = forms.EmailField(required=False)
@@ -147,3 +148,57 @@ class DispatchUploadBOLForm(forms.ModelForm):
         fields = ["bill_of_lading"]
 
 
+class PieceItemForm(forms.ModelForm):
+    class Meta:
+        model = PieceItem
+        fields = [
+            'index',
+            'weight_lbs', 'weight_kgs',
+            'length_cm', 'width_cm', 'height_cm',
+            'notes'
+        ]
+        widgets = {
+            'index': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'weight_lbs': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'weight_kgs': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'length_cm': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'width_cm':  forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'height_cm': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'notes': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+class BasePieceItemFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        # Validar que haya exactamente 'quantity' formularios válidos (no marcados con DELETE)
+        parent = getattr(self, 'instance', None)
+        if not parent:
+            return
+        desired = parent.quantity
+        count_valid = 0
+        indexes = set()
+        for form in self.forms:
+            if not hasattr(form, 'cleaned_data'):
+                continue
+            if form.cleaned_data.get('DELETE'):
+                continue
+            # si todos los campos vienen vacíos, Django lo considera vacío si extra; nosotros contamos los con index
+            idx = form.cleaned_data.get('index')
+            if idx:
+                count_valid += 1
+                if idx in indexes:
+                    form.add_error('index', 'Índice duplicado en el grupo.')
+                indexes.add(idx)
+        if count_valid != desired:
+            raise forms.ValidationError(
+                f"Debes tener exactamente {desired} ítems (actualmente {count_valid})."
+            )
+
+PieceItemFormSet = inlineformset_factory(
+    parent_model=PieceWarehouse,
+    model=PieceItem,
+    form=PieceItemForm,
+    formset=BasePieceItemFormSet,
+    extra=0,          # no agregues extras automáticos; manejamos con botón
+    can_delete=True
+)

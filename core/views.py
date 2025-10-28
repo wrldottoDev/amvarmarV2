@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.forms import inlineformset_factory
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
@@ -7,7 +8,7 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from core.emails import send_credentials_email
 from core.utils import generate_user, generate_password
-from core.models import Warehouse, PieceWarehouse
+from core.models import PieceItem, Warehouse, PieceWarehouse
 from core.forms import WarehouseForm, PieceForm, QuickClientForm
 from django.utils import timezone
 from core.models import DispatchRequest, DispatchRequestItem
@@ -16,7 +17,7 @@ from core.emails import send_dispatch_request_email_to_admin, send_dispatch_rece
 from django.contrib.admin.views.decorators import staff_member_required
 from core.forms import DispatchUploadBOLForm
 from core.emails import send_bol_email_to_user
-from .forms import ApproveWithBOLForm, DispatchMethodForm, PieceWarehouseForm, PieceWarehouseFormSet
+from .forms import ApproveWithBOLForm, DispatchMethodForm, PieceItemForm, PieceItemFormSet, PieceWarehouseForm, PieceWarehouseFormSet
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 # AUTH VIEWS
@@ -275,20 +276,69 @@ def create_warehouse(request):
         if form.is_valid() and formset.is_valid():
             wh = form.save()
             formset.instance = wh
-            formset.save()
-            messages.success(request, f"Warehouse {wh.wr_number} creado con sus piezas.")
-            return redirect("admin_warehouse_detail", wr_number=wh.wr_number)
-        messages.error(request, "Revisa los campos: faltan datos del warehouse o de las piezas.")
+            formset.save()  # aquí se crearán/sincronizarán ítems por la señal
+            messages.success(request, f"Warehouse {wh.wr_number} creado. Completa los ítems individuales.")
+            return redirect("edit_items_for_warehouse", wr_number=wh.wr_number)  # 👈 Paso B
     else:
         form = WarehouseForm()
         formset = PieceWarehouseFormSet(prefix="pieces")
+    return render(request, "admin/create_warehouse.html", {"form": form, "formset": formset})
 
-    return render(request, "admin/create_warehouse.html", {
-        "form": form,
-        "formset": formset,
-        "mode": "create",
+
+PieceItemFormSetFactory = inlineformset_factory(
+    parent_model=PieceWarehouse,
+    model=PieceItem,
+    form=PieceItemForm,
+    extra=0,
+    can_delete=True
+)
+
+@staff_member_required
+def edit_items_for_warehouse(request, wr_number):
+    wh = get_object_or_404(Warehouse, wr_number=wr_number)
+    pieces = wh.pieces.all().order_by('id')
+
+    # Sincronizar por pieza (si se presionó ese botón)
+    if request.method == "POST" and request.POST.get("sync_piece_id"):
+        piece = get_object_or_404(PieceWarehouse, pk=request.POST["sync_piece_id"], warehouse=wh)
+        desired = piece.quantity
+        current = piece.items.count()
+        if current < desired:
+            for i in range(current + 1, desired + 1):
+                PieceItem.objects.create(piece=piece, index=i)
+        elif current > desired:
+            for it in piece.items.order_by('-index')[:current - desired]:
+                it.delete()
+        messages.info(request, f"Ítems sincronizados para la pieza #{piece.pk}.")
+        return redirect("edit_items_for_warehouse", wr_number=wr_number)
+
+    bundles = []  # lista de (piece, formset)
+    if request.method == "POST":
+        all_valid = True
+        for piece in pieces:
+            prefix = f"items_{piece.pk}"
+            fs = PieceItemFormSetFactory(request.POST, instance=piece, prefix=prefix)
+            bundles.append((piece, fs))
+            if not fs.is_valid():
+                all_valid = False
+
+        if all_valid:
+            for _, fs in bundles:
+                fs.save()
+            messages.success(request, "Ítems guardados.")
+            return redirect("admin_warehouse_detail", wr_number=wr_number)
+        else:
+            messages.error(request, "Revisa los errores en los ítems.")
+    else:
+        for piece in pieces:
+            prefix = f"items_{piece.pk}"
+            fs = PieceItemFormSetFactory(instance=piece, prefix=prefix)
+            bundles.append((piece, fs))
+
+    return render(request, "admin/edit_items_for_warehouse.html", {
+        "wh": wh,
+        "bundles": bundles,  # [(piece, formset), ...]
     })
-
 
 @staff_member_required
 def edit_warehouse(request, wr_number):
@@ -339,19 +389,38 @@ def add_piece(request, wr_number):
 @staff_member_required
 def edit_piece(request, pk):
     piece = get_object_or_404(PieceWarehouse, pk=pk)
-    warehouse = piece.warehouse
     if request.method == "POST":
-        form = PieceWarehouseForm(request.POST, instance=piece)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Pieza actualizada.")
-            return redirect("admin_warehouse_detail", wr_number=warehouse.wr_number)
+        piece_form = PieceWarehouseForm(request.POST, instance=piece)
+        formset = PieceItemFormSet(request.POST, instance=piece, prefix="items")
+        # Botón opcional para sincronizar
+        if 'sync_items' in request.POST:
+            desired = piece.quantity if piece_form.is_valid() else int(request.POST.get('quantity', piece.quantity))
+            current = piece.items.count()
+            # crea o borra para igualar
+            if current < desired:
+                for i in range(current + 1, desired + 1):
+                    PieceItem.objects.create(piece=piece, index=i)
+            elif current > desired:
+                for it in piece.items.order_by('-index')[:current - desired]:
+                    it.delete()
+            messages.info(request, "Ítems sincronizados con la cantidad.")
+            return redirect("edit_piece", pk=piece.pk)
+
+        if piece_form.is_valid() and formset.is_valid():
+            piece_form.save()
+            formset.save()
+            messages.success(request, "Pieza e ítems actualizados.")
+            return redirect("admin_warehouse_detail", wr_number=piece.warehouse.wr_number)
+        else:
+            messages.error(request, "Corrige los errores del formulario.")
     else:
-        form = PieceWarehouseForm(instance=piece)
-    return render(request, "piece_form.html", {
-        "form": form,
-        "warehouse": warehouse,
-        "title": "Editar pieza",
+        piece_form = PieceWarehouseForm(instance=piece)
+        formset = PieceItemFormSet(instance=piece, prefix="items")
+
+    return render(request, "admin/edit_piece_with_items.html", {
+        "piece_form": piece_form,
+        "formset": formset,
+        "piece": piece,
     })
 
 @staff_member_required

@@ -3,7 +3,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
-from .models import Warehouse
+from .models import PieceItem, PieceWarehouse, Warehouse
 
 @receiver(post_save, sender=Warehouse)
 def send_warehouse_notification(sender, instance, created, **kwargs):
@@ -30,3 +30,17 @@ def send_warehouse_notification(sender, instance, created, **kwargs):
             recipient_list=[recipient],
             fail_silently=False,
         )
+
+@receiver(post_save, sender=PieceWarehouse)
+def ensure_pieceitems_count(sender, instance, created, **kwargs):
+    desired = instance.quantity
+    current = instance.items.count()
+
+    # Crear los que falten
+    for i in range(current + 1, desired + 1):
+        PieceItem.objects.create(piece=instance, index=i)
+
+    # Si sobran, eliminarlos (de atrás hacia adelante)
+    if current > desired:
+        for it in instance.items.order_by('-index')[:current - desired]:
+            it.delete()

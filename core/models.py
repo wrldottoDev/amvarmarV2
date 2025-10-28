@@ -93,3 +93,34 @@ class DispatchRequestItem(models.Model):
     def __str__(self):
         return f"REQ {self.dispatch_id} → WR {self.warehouse_id}"
     
+class PieceItem(models.Model):
+    """
+    Unidad física individual perteneciente a una PieceWarehouse (grupo).
+    Aquí van peso y medidas unitarias.
+    """
+    piece = models.ForeignKey(PieceWarehouse, on_delete=models.CASCADE, related_name='items')
+    # Identificador opcional visible en UI (1..N). No único global, solo dentro del grupo.
+    index = models.PositiveIntegerField(default=1)
+
+    # Medidas y peso individuales
+    weight_lbs = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    weight_kgs = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    length_cm = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    width_cm  = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    height_cm = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    notes = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        # Evita dos items con el mismo index dentro del mismo grupo
+        unique_together = ('piece', 'index')
+        ordering = ('piece', 'index')
+
+    def save(self, *args, **kwargs):
+        if self.weight_lbs and not self.weight_kgs:
+            self.weight_kgs = round(float(self.weight_lbs) * 0.453592, 3)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.piece.warehouse.wr_number} - {self.piece.get_type_of_display()} #{self.index}"
