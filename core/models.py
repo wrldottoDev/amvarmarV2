@@ -2,6 +2,39 @@ from django.db import models
 from django.contrib.auth.models import User
 import mimetypes, os
 
+ADMIN_PANEL_COLUMN_KEYS = [
+    "wr",
+    "cliente",
+    "shipper",
+    "carrier",
+    "container",
+    "foots",
+    "tracking",
+    "invoice",
+    "po",
+    "fecha",
+    "acciones",
+]
+
+
+def default_admin_column_state():
+    return {key: True for key in ADMIN_PANEL_COLUMN_KEYS}
+
+
+CLIENT_PANEL_COLUMN_KEYS = [
+    "wr",
+    "carrier",
+    "shipper",
+    "weight",
+    "status",
+    "created",
+    "actions",
+]
+
+
+def default_client_column_state():
+    return {key: True for key in CLIENT_PANEL_COLUMN_KEYS}
+
 class Warehouse(models.Model):
 
     STATUS = [
@@ -164,3 +197,39 @@ class WarehouseDocument(models.Model):
     @property
     def filename(self):
         return os.path.basename(self.original_name or self.file.name)
+
+
+class AdminColumnPreference(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="admin_column_preference",
+    )
+    columns = models.JSONField(default=default_admin_column_state)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Preferencia de columnas (admin)"
+        verbose_name_plural = "Preferencias de columnas (admin)"
+
+    def __str__(self):
+        return f"Columnas admin - {self.user.username}"
+
+
+class ClientColumnPreference(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="client_column_preference",
+    )
+    columns = models.JSONField(default=default_client_column_state)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Preferencia de columnas (cliente)"
+        verbose_name_plural = "Preferencias de columnas (cliente)"
+
+    def __str__(self):
+        return f"Columnas cliente - {self.user.username}"

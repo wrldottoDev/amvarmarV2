@@ -1,16 +1,29 @@
 import io
+import json
 import zipfile
+from urllib.parse import urlencode
 from django.db import transaction
 from django.forms import inlineformset_factory
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.contrib.auth.models import User
 from django.contrib import messages
 from core.emails import send_credentials_email
 from core.utils import generate_user, generate_password
-from core.models import PieceItem, Warehouse, PieceWarehouse, WarehouseDocument
+from core.models import (
+    ADMIN_PANEL_COLUMN_KEYS,
+    CLIENT_PANEL_COLUMN_KEYS,
+    AdminColumnPreference,
+    ClientColumnPreference,
+    PieceItem,
+    Warehouse,
+    PieceWarehouse,
+    WarehouseDocument,
+    default_admin_column_state,
+    default_client_column_state,
+)
 from core.forms import WarehouseForm, PieceForm, QuickClientForm
 from django.utils import timezone
 from core.models import DispatchRequest, DispatchRequestItem
@@ -23,6 +36,35 @@ from .forms import ApproveWithBOLForm, DispatchMethodForm, PieceItemForm, PieceI
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.utils.encoding import smart_str
+from django.views.decorators.http import require_http_methods
+
+
+def _normalize_column_state(keys, default_factory, raw_state):
+    """
+    Devuelve un diccionario con todas las columnas esperadas
+    y valores booleanos garantizados.
+    """
+    base_state = default_factory()
+    if not isinstance(raw_state, dict):
+        return base_state
+
+    for key in keys:
+        value = raw_state.get(key)
+        if isinstance(value, bool):
+            base_state[key] = value
+        elif isinstance(value, str):
+            base_state[key] = value.lower() in ("1", "true", "yes", "si", "on")
+        elif value is not None:
+            base_state[key] = bool(value)
+    return base_state
+
+
+def _normalize_admin_column_state(raw_state):
+    return _normalize_column_state(ADMIN_PANEL_COLUMN_KEYS, default_admin_column_state, raw_state)
+
+
+def _normalize_client_column_state(raw_state):
+    return _normalize_column_state(CLIENT_PANEL_COLUMN_KEYS, default_client_column_state, raw_state)
 # AUTH VIEWS
 
 def login_view(request):
@@ -195,6 +237,11 @@ def admin_panel(request):
         page_obj = paginator.page(1)
 
     clients = User.objects.filter(is_staff=False, is_active=True).order_by("username")
+    pref_obj, _ = AdminColumnPreference.objects.get_or_create(user=request.user)
+    column_state = _normalize_admin_column_state(pref_obj.columns)
+    if column_state != pref_obj.columns:
+        pref_obj.columns = column_state
+        pref_obj.save(update_fields=["columns", "updated_at"])
 
     ctx = {
         "warehouses": page_obj.object_list,
@@ -205,8 +252,32 @@ def admin_panel(request):
         "q": q,
         "per_page": str(per_page_int),
         "per_page_choices": [10, 20, 50, 100],
+        "column_preferences": column_state,
+        "column_keys": ADMIN_PANEL_COLUMN_KEYS,
     }
     return render(request, "admin_panel.html", ctx)
+
+
+@staff_member_required
+@require_http_methods(["GET", "POST"])
+def admin_panel_column_preferences(request):
+    pref_obj, _ = AdminColumnPreference.objects.get_or_create(user=request.user)
+
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return JsonResponse({"ok": False, "error": "JSON invalido"}, status=400)
+        state = _normalize_admin_column_state(payload.get("columns"))
+        pref_obj.columns = state
+        pref_obj.save(update_fields=["columns", "updated_at"])
+        return JsonResponse({"ok": True, "columns": state})
+
+    state = _normalize_admin_column_state(pref_obj.columns)
+    if state != pref_obj.columns:
+        pref_obj.columns = state
+        pref_obj.save(update_fields=["columns", "updated_at"])
+    return JsonResponse({"ok": True, "columns": state})
 
 
 # CRUD de Warehouses
@@ -568,9 +639,103 @@ def send_bol_to_user(request, pk):
     return redirect("dispatch_detail", pk=pk)
 
 @login_required(login_url='login')
+@login_required(login_url='login')
 def my_warehouses(request):
     qs = Warehouse.objects.filter(cliente=request.user).order_by("-created_at")
-    return render(request, "my_warehouses.html", {"warehouses": qs})
+
+    q = (request.GET.get("q") or "").strip()
+    status = request.GET.get("status") or ""
+    per_page = request.GET.get("per_page") or "10"
+    page = request.GET.get("page") or "1"
+
+    if q:
+        qs = qs.filter(
+            Q(wr_number__icontains=q)
+            | Q(shipper__icontains=q)
+            | Q(carrier__icontains=q)
+            | Q(tracking__icontains=q)
+            | Q(invoice_number__icontains=q)
+            | Q(po__icontains=q)
+        )
+
+    if status:
+        qs = qs.filter(status=status)
+
+    try:
+        per_page_int = max(1, min(100, int(per_page)))
+    except (TypeError, ValueError):
+        per_page_int = 10
+
+    paginator = Paginator(qs, per_page_int)
+
+    try:
+        page_number = int(page)
+    except (TypeError, ValueError):
+        page_number = 1
+
+    if page_number < 1:
+        page_number = 1
+    if page_number > paginator.num_pages and paginator.num_pages > 0:
+        page_number = paginator.num_pages
+
+    try:
+        page_obj = paginator.page(page_number)
+    except EmptyPage:
+        page_obj = paginator.page(1)
+
+    pref_obj, _ = ClientColumnPreference.objects.get_or_create(user=request.user)
+    column_state = _normalize_client_column_state(pref_obj.columns)
+    if column_state != pref_obj.columns:
+        pref_obj.columns = column_state
+        pref_obj.save(update_fields=["columns", "updated_at"])
+
+    query_params = {}
+    if q:
+        query_params["q"] = q
+    if status:
+        query_params["status"] = status
+    query_params["per_page"] = str(per_page_int)
+    query_string = urlencode(query_params)
+    query_prefix = f"{query_string}&" if query_string else ""
+
+    ctx = {
+        "warehouses": page_obj.object_list,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "q": q,
+        "status": status,
+        "per_page": str(per_page_int),
+        "per_page_choices": [10, 20, 50],
+        "status_choices": Warehouse.STATUS,
+        "column_preferences": column_state,
+        "column_keys": CLIENT_PANEL_COLUMN_KEYS,
+        "query_prefix": query_prefix,
+        "query_string": query_string,
+    }
+    return render(request, "my_warehouses.html", ctx)
+
+
+@login_required(login_url='login')
+@require_http_methods(["GET", "POST"])
+def client_warehouse_column_preferences(request):
+    pref_obj, _ = ClientColumnPreference.objects.get_or_create(user=request.user)
+
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return JsonResponse({"ok": False, "error": "JSON invalido"}, status=400)
+        state = _normalize_client_column_state(payload.get("columns"))
+        pref_obj.columns = state
+        pref_obj.save(update_fields=["columns", "updated_at"])
+        return JsonResponse({"ok": True, "columns": state})
+
+    state = _normalize_client_column_state(pref_obj.columns)
+    if state != pref_obj.columns:
+        pref_obj.columns = state
+        pref_obj.save(update_fields=["columns", "updated_at"])
+    return JsonResponse({"ok": True, "columns": state})
+
 
 @login_required(login_url='login')
 def warehouse_detail(request, wr_number):

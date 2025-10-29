@@ -203,61 +203,74 @@
   {% endif %}
 </div>
 
+{{ column_keys|json_script:'admin-column-keys' }}
+{{ column_preferences|json_script:'admin-column-pref' }}
+
 <!-- Column toggle script -->
 <script>
 (function() {
-  // Key de storage único para esta página
-  const STORAGE_KEY = 'admin_panel_column_visibility_v1';
+  const keysElement = document.getElementById('admin-column-keys');
+  const stateElement = document.getElementById('admin-column-pref');
+  if (!keysElement || !stateElement) return;
 
-  // Lista de claves de columnas soportadas
-  const COL_KEYS = [
-    'wr','cliente','shipper','carrier','container',
-    'foots','tracking','invoice','po',
-    'fecha','acciones'
-  ];
+  const COL_KEYS = JSON.parse(keysElement.textContent || '[]');
+  const state = JSON.parse(stateElement.textContent || '{}');
+  const currentState = Object.assign({}, state);
+  const PREF_URL = "{% url 'admin_column_preferences' %}";
 
-  // Carga estado guardado o por defecto (todas visibles)
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return Object.fromEntries(COL_KEYS.map(k => [k, true]));
-      const parsed = JSON.parse(raw);
-      // aplica por defecto true si falta alguna key
-      COL_KEYS.forEach(k => { if (typeof parsed[k] === 'undefined') parsed[k] = true; });
-      return parsed;
-    } catch(e) {
-      return Object.fromEntries(COL_KEYS.map(k => [k, true]));
+  function getCookie(name) {
+    const cookies = document.cookie ? document.cookie.split('; ') : [];
+    for (let i = 0; i < cookies.length; i++) {
+      const parts = cookies[i].split('=');
+      const cookieName = decodeURIComponent(parts[0]);
+      if (cookieName === name) {
+        return decodeURIComponent(parts[1] || '');
+      }
     }
+    return null;
   }
 
-  function saveState(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }
+  const csrfToken = getCookie('csrftoken');
 
-  function applyState(state) {
+  function applyState(stateToApply) {
     COL_KEYS.forEach(key => {
-      const show = !!state[key];
-      // toggle checkboxes UI
-      const cb = document.querySelector('.col-toggle[value="'+key+'"]');
-      if (cb) cb.checked = show;
-      // toggle columnas (th + tds)
+      const show = !!stateToApply[key];
+      const checkbox = document.querySelector('.col-toggle[value="' + key + '"]');
+      if (checkbox) checkbox.checked = show;
       document.querySelectorAll('.col-' + key).forEach(el => {
         el.style.display = show ? '' : 'none';
       });
     });
   }
 
-  // Inicializa
-  const state = loadState();
-  applyState(state);
+  let saveTimer = null;
+  function scheduleSave() {
+    if (!csrfToken || !PREF_URL) return;
+    if (saveTimer) window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => {
+      fetch(PREF_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ columns: currentState }),
+      }).catch(() => {
+        console.warn('No se pudo guardar la preferencia de columnas.');
+      });
+    }, 300);
+  }
 
-  // Listeners para checkboxes
+  applyState(currentState);
+
   document.querySelectorAll('.col-toggle').forEach(cb => {
     cb.addEventListener('change', () => {
       const key = cb.value;
-      state[key] = cb.checked;
-      applyState(state);
-      saveState(state);
+      if (!COL_KEYS.includes(key)) return;
+      currentState[key] = cb.checked;
+      applyState(currentState);
+      scheduleSave();
     });
   });
 })();

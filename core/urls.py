@@ -33,6 +33,11 @@ urlpatterns = [
     # -------------------------
     path("mis-warehouses/", views.my_warehouses, name="my_warehouses"),
     path(
+        "mis-warehouses/preferences/columns/",
+        views.client_warehouse_column_preferences,
+        name="client_column_preferences",
+    ),
+    path(
         "mis-warehouses/<str:wr_number>/",
         views.warehouse_detail,                 # <-- vista CLIENTE
         name="client_warehouse_detail",
@@ -44,6 +49,11 @@ urlpatterns = [
     # ADMIN (panel, clientes)
     # -------------------------
     path("admin-panel/", views.admin_panel, name="admin_panel"),
+    path(
+        "admin-panel/preferences/columns/",
+        views.admin_panel_column_preferences,
+        name="admin_column_preferences",
+    ),
     path("panel/clients/", views.clients_list, name="clients_list"),
     path("panel/clients/quick-create/", views.quick_create_client, name="quick_create_client"),
 
