@@ -6,6 +6,66 @@
   <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
     <a href="{% url 'create_warehouse' %}" class="btn btn-primary">+ Nuevo Warehouse</a>
     <a href="{% url 'dispatch_list' %}" class="btn btn-outline-primary">Solicitudes de despacho</a>
+
+    <!-- Selector de columnas -->
+    <div class="ms-auto">
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          Columnas
+        </button>
+        <div class="dropdown-menu p-3" style="min-width: 260px;">
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="wr" id="col-wr" checked>
+            <label class="form-check-label" for="col-wr">WR</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="cliente" id="col-cliente" checked>
+            <label class="form-check-label" for="col-cliente">Cliente</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="shipper" id="col-shipper" checked>
+            <label class="form-check-label" for="col-shipper">Shipper</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="carrier" id="col-carrier" checked>
+            <label class="form-check-label" for="col-carrier">Carrier</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="container" id="col-container" checked>
+            <label class="form-check-label" for="col-container">Container #</label>
+          </div>
+
+          <!-- Nuevos campos -->
+          <hr class="my-2">
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="foots" id="col-foots" checked>
+            <label class="form-check-label" for="col-foots">CFTS</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="tracking" id="col-tracking" checked>
+            <label class="form-check-label" for="col-tracking">Tracking</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="invoice" id="col-invoice" checked>
+            <label class="form-check-label" for="col-invoice">Invoice #</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="po" id="col-po" checked>
+            <label class="form-check-label" for="col-po">PO</label>
+          </div>
+
+          <hr class="my-2">
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="fecha" id="col-fecha" checked>
+            <label class="form-check-label" for="col-fecha">Fecha</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input col-toggle" type="checkbox" value="acciones" id="col-acciones" checked>
+            <label class="form-check-label" for="col-acciones">Acciones</label>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Filtros -->
@@ -46,36 +106,52 @@
 
   <!-- Tabla -->
   <div class="table-responsive shadow-sm">
-    <table class="table table-striped table-hover align-middle">
+    <table class="table table-striped table-hover align-middle" id="wh-table">
       <thead class="table-light">
         <tr>
-          <th>WR</th>
-          <th>Cliente</th>
-          <th>Shipper</th>
-          <th>Carrier</th>
-          <th>Container #</th>
-          <th>Fecha</th>
-          <th style="width: 260px;">Acciones</th>
+          <th class="col-wr">WR</th>
+          <th class="col-cliente">Cliente</th>
+          <th class="col-shipper">Shipper</th>
+          <th class="col-carrier">Carrier</th>
+          <th class="col-container">Container #</th>
+
+          <!-- Nuevos campos -->
+          <th class="col-foots">CFTS</th>
+          <th class="col-tracking">Tracking</th>
+          <th class="col-invoice">Invoice #</th>
+          <th class="col-po">PO</th>
+
+          <th class="col-fecha">Fecha</th>
+          <th class="col-acciones" style="width: 300px;">Acciones</th>
         </tr>
       </thead>
       <tbody>
         {% for w in warehouses %}
         <tr>
-          <td><strong>WR{{ w.wr_number }}</strong></td>
-          <td>{{ w.cliente.get_full_name }}</td>
-          <td>{{ w.shipper }}</td>
-          <td>{{ w.carrier }}</td>
-          <td>{{ w.container_number }}</td>
-          <td>{{ w.created_at|date:"d/m/Y H:i" }}</td>
-          <td>
-            <a href="{% url 'admin_warehouse_detail' w.wr_number %}" class="btn btn-sm btn-outline-info">Ver</a>
-            <a href="{% url 'edit_warehouse' w.wr_number %}" class="btn btn-sm btn-outline-secondary">Editar</a>
-            <a href="{% url 'delete_warehouse' w.wr_number %}" class="btn btn-sm btn-outline-danger">Eliminar</a>
+          <td class="col-wr"><strong>WR{{ w.wr_number }}</strong></td>
+          <td class="col-cliente">{{ w.cliente.get_full_name|default:w.cliente.username }}</td>
+          <td class="col-shipper">{{ w.shipper }}</td>
+          <td class="col-carrier">{{ w.carrier }}</td>
+          <td class="col-container">{{ w.container_number|default:"—" }}</td>
+
+          <!-- Nuevos campos -->
+          <td class="col-foots">{{ w.foots|default:"—" }}</td>
+          <td class="col-tracking">{{ w.tracking|default:"—" }}</td>
+          <td class="col-invoice">{{ w.invoice_number|default:"—" }}</td>
+          <td class="col-po">{{ w.po|default:"—" }}</td>
+
+          <td class="col-fecha">{{ w.created_at|date:"d/m/Y H:i" }}</td>
+          <td class="col-acciones">
+            <div class="d-flex flex-wrap gap-1">
+              <a href="{% url 'admin_warehouse_detail' w.wr_number %}" class="btn btn-sm btn-outline-info">Ver</a>
+              <a href="{% url 'edit_warehouse' w.wr_number %}" class="btn btn-sm btn-outline-secondary">Editar</a>
+              <a href="{% url 'delete_warehouse' w.wr_number %}" class="btn btn-sm btn-outline-danger">Eliminar</a>
+            </div>
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="6" class="text-center text-muted py-3">No hay warehouses registrados</td>
+          <td colspan="11" class="text-center text-muted py-3">No hay warehouses registrados</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -126,4 +202,64 @@
   </nav>
   {% endif %}
 </div>
+
+<!-- Column toggle script -->
+<script>
+(function() {
+  // Key de storage único para esta página
+  const STORAGE_KEY = 'admin_panel_column_visibility_v1';
+
+  // Lista de claves de columnas soportadas
+  const COL_KEYS = [
+    'wr','cliente','shipper','carrier','container',
+    'foots','tracking','invoice','po',
+    'fecha','acciones'
+  ];
+
+  // Carga estado guardado o por defecto (todas visibles)
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return Object.fromEntries(COL_KEYS.map(k => [k, true]));
+      const parsed = JSON.parse(raw);
+      // aplica por defecto true si falta alguna key
+      COL_KEYS.forEach(k => { if (typeof parsed[k] === 'undefined') parsed[k] = true; });
+      return parsed;
+    } catch(e) {
+      return Object.fromEntries(COL_KEYS.map(k => [k, true]));
+    }
+  }
+
+  function saveState(state) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function applyState(state) {
+    COL_KEYS.forEach(key => {
+      const show = !!state[key];
+      // toggle checkboxes UI
+      const cb = document.querySelector('.col-toggle[value="'+key+'"]');
+      if (cb) cb.checked = show;
+      // toggle columnas (th + tds)
+      document.querySelectorAll('.col-' + key).forEach(el => {
+        el.style.display = show ? '' : 'none';
+      });
+    });
+  }
+
+  // Inicializa
+  const state = loadState();
+  applyState(state);
+
+  // Listeners para checkboxes
+  document.querySelectorAll('.col-toggle').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const key = cb.value;
+      state[key] = cb.checked;
+      applyState(state);
+      saveState(state);
+    });
+  });
+})();
+</script>
 {% endblock %}

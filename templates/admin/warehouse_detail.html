@@ -28,7 +28,7 @@
   <!-- Top cards -->
   <div class="row g-3 mt-2">
     <div class="col-md-6">
-      <div class="card">
+      <div class="card h-100">
         <div class="card-header fw-semibold">Datos</div>
         <div class="card-body">
           <p><b>Cliente:</b> {{ wh.cliente.get_full_name|default:wh.cliente.username }}</p>
@@ -43,16 +43,21 @@
 
     <div class="col-md-6">
       <div class="card">
-        <div class="card-header fw-semibold">Pesos</div>
+        <div class="card-header fw-semibold">Medidas / Pesos</div>
         <div class="card-body">
           <p><b>Peso (lbs):</b> {{ wh.weight_lbs|default:"—" }}</p>
           <p><b>Peso (kgs):</b> {{ wh.weight_kgs|default:"—" }}</p>
+          <p><b>cfts (ft³):</b> {{ wh.weight_lbs|default:"—" }}</p>
         </div>
       </div>
 
-      <div class="card mt-3">
-        <div class="card-header fw-semibold">Archivo</div>
+
+      <div class="card mt-2">
+        <div class="card-header fw-semibold">Archivos</div>
         <div class="card-body">
+          <p><b># Factura:</b> {{ wh.invoice_number|default:"—" }}</p>
+          <p><b># PO:</b> {{ wh.po|default:"—" }}</p>
+          <p><b># Tracking:</b> {{ wh.tracking|default:"—" }}</p>
           {% if wh.uploaded_file %}
             <a href="{{ wh.uploaded_file.url }}" target="_blank" rel="noopener">Descargar documento</a>
           {% else %}
